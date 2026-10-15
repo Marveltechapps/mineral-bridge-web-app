@@ -1,4 +1,4 @@
-import { useAppState } from '@/hooks/useAppState';
+import { useCatalogState, useNavigationState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
 import { css } from '@/utils/css';
 import logo from '@/assets/images/mb-logo.png';
@@ -20,11 +20,13 @@ const BASE_NAV: { id: RouteKey; label: string; r: RouteKey }[] = [
 
 /** Sticky top bar: brand, primary navigation, search and the account cluster. */
 export function Header() {
-  const { state, go } = useAppState();
+  const { authed } = useSessionState();
+  const { query } = useCatalogState();
+  const { route, go } = useNavigationState();
   const h = useActions();
 
   const topNav = BASE_NAV.concat(
-    state.authed ? [{ id: 'orders' as RouteKey, label: 'My Orders', r: 'orders' as RouteKey }] : [],
+    authed ? [{ id: 'orders' as RouteKey, label: 'My Orders', r: 'orders' as RouteKey }] : [],
   );
 
   return (
@@ -83,8 +85,8 @@ export function Header() {
               key={n.id}
               className="v2-top"
               onClick={() => go(n.r)}
-              aria-current={state.route === n.id ? 'page' : undefined}
-              style={css(state.route === n.id ? NAV_ON : NAV_BASE)}
+              aria-current={route === n.id ? 'page' : undefined}
+              style={css(route === n.id ? NAV_ON : NAV_BASE)}
             >
               {n.label}
             </button>
@@ -117,7 +119,7 @@ export function Header() {
               </svg>
             </span>
             <input
-              value={state.query}
+              value={query}
               onChange={h.setQuery}
               placeholder="Search minerals, orders…"
               aria-label="Search minerals and orders"
@@ -127,7 +129,7 @@ export function Header() {
             />
           </div>
 
-          {state.authed ? (
+          {authed ? (
             <>
               <button
                 onClick={h.goOrders}

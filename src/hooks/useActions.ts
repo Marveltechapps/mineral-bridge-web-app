@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useAppActions, useKycState, useNavigationState, useSessionState } from '@/hooks/useAppState';
 import { markHiwSeen, type AppState } from '@/store/appState';
 import type { RouteKey } from '@/types';
 
@@ -9,7 +9,10 @@ import type { RouteKey } from '@/types';
  * handlers live with their own view models.
  */
 export function useActions() {
-  const { state, setState, go } = useAppState();
+  const { authed } = useSessionState();
+  const { kycStatus } = useKycState();
+  const { route } = useNavigationState();
+  const { setState, go } = useAppActions();
 
   return useMemo(() => {
     const closeModal = () => setState({ modal: null });
@@ -23,12 +26,12 @@ export function useActions() {
      * enough, matching the design's `requireKyc`.
      */
     const requireKyc = (what: string, proceed: () => void, returnTo?: RouteKey) => {
-      if (state.kycStatus === 'verified') {
+      if (kycStatus === 'verified') {
         proceed();
         return;
       }
-      const back = returnTo || state.route;
-      if (state.kycStatus === 'pending') {
+      const back = returnTo || route;
+      if (kycStatus === 'pending') {
         setState({
           modal: {
             title: 'Verification still under review',
@@ -94,13 +97,13 @@ export function useActions() {
       },
       goKycFromBanner: () => {
         setState({
-          kycStage: state.kycStatus === 'pending' ? 'pending' : 'why',
-          kycReturn: state.route,
+          kycStage: kycStatus === 'pending' ? 'pending' : 'why',
+          kycReturn: route,
         });
         go('kyc');
       },
       goAsm: () => {
-        if (!state.authed) {
+        if (!authed) {
           setState({
             authOpen: true,
             authMode: 'signup',
@@ -113,5 +116,5 @@ export function useActions() {
         go('asm');
       },
     };
-  }, [state, setState, go]);
+  }, [authed, kycStatus, route, setState, go]);
 }

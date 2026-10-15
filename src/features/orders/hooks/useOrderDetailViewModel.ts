@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useOrdersState } from '@/hooks/useAppState';
 import { ORDERS } from '@/constants/orders';
 import { stageIndexFor, stagesFor } from '@/constants/catalog';
 
@@ -15,10 +15,10 @@ const TIMES = [
 
 /** View model for a single order's tracking screen. */
 export function useOrderDetailViewModel() {
-  const { state, setState } = useAppState();
+  const { trackId, setState } = useOrdersState();
 
   return useMemo(() => {
-    const to = ORDERS.find((o) => o.id === state.trackId) || ORDERS[0];
+    const to = ORDERS.find((o) => o.id === trackId) || ORDERS[0];
     const STAGES = stagesFor(to.side);
     const stageIdx = stageIndexFor(to.side, to.progress);
     const rej = !!to.rejected;
@@ -145,5 +145,5 @@ export function useOrderDetailViewModel() {
     };
 
     return { track };
-  }, [state.trackId, setState]);
+  }, [trackId, setState]);
 }

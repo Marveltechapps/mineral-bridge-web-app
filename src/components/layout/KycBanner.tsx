@@ -1,4 +1,4 @@
-import { useAppState } from '@/hooks/useAppState';
+import { useKycState, useNavigationState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
 import { css } from '@/utils/css';
 
@@ -7,13 +7,15 @@ import { css } from '@/utils/css';
  * Hidden on the KYC screen itself, exactly as the design specifies.
  */
 export function KycBanner() {
-  const { state } = useAppState();
+  const { authed } = useSessionState();
+  const { kycStatus } = useKycState();
+  const { route } = useNavigationState();
   const h = useActions();
 
-  const show = state.authed && state.kycStatus !== 'verified' && state.route !== 'kyc';
+  const show = authed && kycStatus !== 'verified' && route !== 'kyc';
   if (!show) return null;
 
-  const pend = state.kycStatus === 'pending';
+  const pend = kycStatus === 'pending';
 
   return (
     <div

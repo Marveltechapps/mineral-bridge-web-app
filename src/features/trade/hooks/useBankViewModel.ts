@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useTradeState } from '@/hooks/useAppState';
 import { CHIP } from '@/constants/tokens';
 import { chipStyle, formatDate, money } from '@/utils/format';
 import { LC_DOCS, tradeBtn } from '@/features/trade/constants';
@@ -54,7 +54,17 @@ const actionStyle = (on: boolean) =>
 
 /** View model for the Bank Portal: LC applications and document examination. */
 export function useBankViewModel() {
-  const { state, setState, go } = useAppState();
+  const {
+    bankTab,
+    bankStatus,
+    lcStatus,
+    lcDocs,
+    lcPresented,
+    lcExam,
+    lcPaid,
+    setState,
+    go,
+  } = useTradeState();
   const { ct, total, blDate, lateBL, disc, ok } = useLcState();
 
   return useMemo(() => {
@@ -79,21 +89,21 @@ export function useBankViewModel() {
       inspection: 'Seal MB-SEAL-00941 intact',
     };
 
-    const exReady = state.lcPresented || !!state.lcExam;
+    const exReady = lcPresented || !!lcExam;
 
-    const res: [string, string, readonly [string, string]] | null = state.lcPaid
+    const res: [string, string, readonly [string, string]] | null = lcPaid
       ? [
           'Payment released',
           money(total) + ' paid to ' + ct.seller + '. Settlement hash 0x9d21…4b7a recorded on-chain.',
           CHIP.GREEN,
         ]
-      : state.lcExam === 'accepted'
+      : lcExam === 'accepted'
         ? [
             'Documents accepted',
             'Complying presentation. Release payment to complete settlement.',
             CHIP.GREEN,
           ]
-        : state.lcExam === 'refused'
+        : lcExam === 'refused'
           ? [
               'Presentation refused',
               'The beneficiary has been notified of the discrepancies.',
@@ -108,7 +118,7 @@ export function useBankViewModel() {
           ['exam', 'Document examination'],
         ] as const
       ).map(([k, l]) => {
-        const on = state.bankTab === k;
+        const on = bankTab === k;
         return {
           k,
           label: l,
@@ -121,13 +131,13 @@ export function useBankViewModel() {
             ';',
         };
       }),
-      isApps: state.bankTab === 'apps',
-      isExam: state.bankTab === 'exam',
+      isApps: bankTab === 'apps',
+      isExam: bankTab === 'exam',
       examEmpty: !exReady,
       examReady: exReady,
       goLc: () => go('lc'),
       rows: BANK_ROWS.map((r) => {
-        const s = r.main ? state.lcStatus : state.bankStatus[r.id] || r.def;
+        const s = r.main ? lcStatus : bankStatus[r.id] || r.def;
         const c = STATUS_CHIP[s] || CHIP.GREY;
         const A: [string, boolean, () => void][] = [
           ['Issue', s === 'Applied', () => adv(r, 'Issued')],
@@ -170,7 +180,7 @@ export function useBankViewModel() {
         { k: 'Tenor', v: ct.tenor },
       ],
       docs: LC_DOCS.map(([k, n]) => {
-        const up = !!state.lcDocs[k];
+        const up = !!lcDocs[k];
         const bad = !up || (k === 'bl' && lateBL);
         return {
           k,
@@ -192,27 +202,27 @@ export function useBankViewModel() {
         'width:12px; height:12px; border-radius:6px; flex-shrink:0; background:' +
         (ok ? '#16a34a' : '#dc2626') +
         ';',
-      acceptBlocked: !ok || !!state.lcExam,
-      refuseBlocked: !!state.lcExam,
-      releaseBlocked: !(state.lcExam === 'accepted' && !state.lcPaid),
-      acceptStyle: tradeBtn(ok && !state.lcExam),
-      releaseStyle: tradeBtn(state.lcExam === 'accepted' && !state.lcPaid, '#16a34a'),
+      acceptBlocked: !ok || !!lcExam,
+      refuseBlocked: !!lcExam,
+      releaseBlocked: !(lcExam === 'accepted' && !lcPaid),
+      acceptStyle: tradeBtn(ok && !lcExam),
+      releaseStyle: tradeBtn(lcExam === 'accepted' && !lcPaid, '#16a34a'),
       refuseStyle:
         'height:50px; padding:0 22px; border-radius:13px; font-size:14.5px; font-weight:800; border:1px solid ' +
-        (state.lcExam ? '#eef1f8' : '#f3c8c8') +
+        (lcExam ? '#eef1f8' : '#f3c8c8') +
         '; background:#fff; color:' +
-        (state.lcExam ? '#5b638a' : '#b91c1c') +
+        (lcExam ? '#5b638a' : '#b91c1c') +
         '; cursor:' +
-        (state.lcExam ? 'not-allowed' : 'pointer') +
+        (lcExam ? 'not-allowed' : 'pointer') +
         ';',
       accept: () => {
-        if (ok && !state.lcExam) setState({ lcExam: 'accepted' });
+        if (ok && !lcExam) setState({ lcExam: 'accepted' });
       },
       refuse: () => {
-        if (!state.lcExam) setState({ lcExam: 'refused', lcPresented: false });
+        if (!lcExam) setState({ lcExam: 'refused', lcPresented: false });
       },
       release: () => {
-        if (state.lcExam === 'accepted' && !state.lcPaid) setState({ lcPaid: true });
+        if (lcExam === 'accepted' && !lcPaid) setState({ lcPaid: true });
       },
       hasResult: !!res,
       resultTitle: res ? res[0] : '',
@@ -226,13 +236,13 @@ export function useBankViewModel() {
         : '',
     };
   }, [
-    state.bankTab,
-    state.lcStatus,
-    state.bankStatus,
-    state.lcDocs,
-    state.lcPresented,
-    state.lcExam,
-    state.lcPaid,
+    bankTab,
+    lcStatus,
+    bankStatus,
+    lcDocs,
+    lcPresented,
+    lcExam,
+    lcPaid,
     ct,
     total,
     blDate,

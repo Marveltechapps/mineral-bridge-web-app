@@ -1,4 +1,4 @@
-import { useAppState } from '@/hooks/useAppState';
+import { useAppActions } from '@/hooks/useAppState';
 import { css } from '@/utils/css';
 import logo from '@/assets/images/mb-logo.png';
 import type { RouteKey } from '@/types';
@@ -34,7 +34,7 @@ const FOOTER_COLS: { title: string; links: FooterLink[] }[] = [
 
 /** Dark brand footer with the three link columns and the legal strip. */
 export function Footer() {
-  const { setState, go } = useAppState();
+  const { setState, go } = useAppActions();
 
   const follow = (r: FooterLink['r']) => () =>
     r === '__auth'

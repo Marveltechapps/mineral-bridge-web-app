@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useProductState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
 import { PRODUCTS } from '@/constants/catalog';
 import { passportId } from '@/features/passport/hooks/usePassportViewModel';
@@ -15,11 +15,12 @@ const PAYS: [string, string, string, string][] = [
 
 /** View model for the lot detail screen: specs, provenance and the buy panel. */
 export function useProductViewModel() {
-  const { state, setState, go } = useAppState();
+  const { activeId, qty, payMethod, setState, go } = useProductState();
+  const { authed } = useSessionState();
   const h = useActions();
 
   return useMemo(() => {
-    const ap = PRODUCTS.find((p) => p.id === state.activeId) || PRODUCTS[0];
+    const ap = PRODUCTS.find((p) => p.id === activeId) || PRODUCTS[0];
 
     const active = {
       ...ap,
@@ -40,7 +41,7 @@ export function useProductViewModel() {
       desc: `${ap.name} sourced from ${ap.region}. Every lot is inspected on site by a Mineral Bridge agent, sampled, and independently lab-assayed before listing. Chain-of-custody documents and export permits are attached to the order and settlement is escrow-backed.`,
     };
 
-    const qtyN = state.qty || 0;
+    const qtyN = qty || 0;
     const sub = num(ap.price) * qtyN;
     const fee = sub * 0.01;
 
@@ -68,11 +69,11 @@ export function useProductViewModel() {
     };
 
     const settle = {
-      isBtc: state.payMethod === 'btc',
-      isLc: state.payMethod === 'lc',
+      isBtc: payMethod === 'btc',
+      isLc: payMethod === 'lc',
       openLc: () => go('contract'),
       opts: PAYS.map(([k, t, s, tag]) => {
-        const on = state.payMethod === k;
+        const on = payMethod === k;
         return {
           k,
           t,
@@ -106,7 +107,7 @@ export function useProductViewModel() {
       setQty: (e: React.ChangeEvent<HTMLInputElement>) =>
         setState({ qty: parseInt((e.target.value || '').replace(/[^0-9]/g, ''), 10) || 0 }),
       buyNow: () => {
-        if (!state.authed) {
+        if (!authed) {
           setState({
             authOpen: true,
             authMode: 'login',
@@ -118,5 +119,5 @@ export function useProductViewModel() {
         h.requireKyc('complete a purchase', () => go('orders'), 'product');
       },
     };
-  }, [state.activeId, state.qty, state.payMethod, state.authed, setState, go, h]);
+  }, [activeId, qty, payMethod, authed, setState, go, h]);
 }

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useAuctionsState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
 import { AUCS } from '@/constants/auctions';
 import { FIELD } from '@/constants/tokens';
@@ -40,11 +40,12 @@ const flagFor = (s: AuctionState) => {
 
 /** View model for the auction list and the auction detail screen. */
 export function useAuctionsViewModel() {
-  const { state, setState, go } = useAppState();
+  const { aucTab, aucId, bidValue, outbidDismissed, setState, go } = useAuctionsState();
+  const { authed } = useSessionState();
   const h = useActions();
 
   return useMemo(() => {
-    const aucList = AUCS.filter((a) => a.state === state.aucTab).map((a) => {
+    const aucList = AUCS.filter((a) => a.state === aucTab).map((a) => {
       const won = a.state === 'ended' && a.yourBidNum > 0 && a.yourBidNum >= a.bidNum;
       return {
         ...a,
@@ -70,7 +71,7 @@ export function useAuctionsViewModel() {
       };
     });
 
-    const av = AUCS.find((a) => a.id === state.aucId) || AUCS[0];
+    const av = AUCS.find((a) => a.id === aucId) || AUCS[0];
     const avWon = av.state === 'ended' && av.yourBidNum > 0 && av.yourBidNum >= av.bidNum;
 
     const auc = {
@@ -164,13 +165,13 @@ export function useAuctionsViewModel() {
       ).map((t) => ({
         k: t.k,
         label: t.label,
-        style: aucChip(state.aucTab === t.k),
+        style: aucChip(aucTab === t.k),
         select: () => setState({ aucTab: t.k }),
       })),
       aucList,
       auc,
-      bidValue: String(state.bidValue || 0),
-      aucOutbid: !!outbidLot && !state.outbidDismissed,
+      bidValue: String(bidValue || 0),
+      aucOutbid: !!outbidLot && !outbidDismissed,
       aucOutbidLot: outbidLot ? outbidLot.name : '',
       aucOutbidAmount: outbidLot ? money(outbidLot.bidNum) : '',
       dismissOutbid: () => setState({ outbidDismissed: true }),
@@ -179,7 +180,7 @@ export function useAuctionsViewModel() {
       setBid: (e: React.ChangeEvent<HTMLInputElement>) =>
         setState({ bidValue: parseInt((e.target.value || '').replace(/[^0-9]/g, ''), 10) || 0 }),
       placeBid: () => {
-        if (!state.authed) {
+        if (!authed) {
           setState({
             modal: {
               title: 'Sign in to bid',
@@ -231,11 +232,11 @@ export function useAuctionsViewModel() {
         }),
     };
   }, [
-    state.aucTab,
-    state.aucId,
-    state.bidValue,
-    state.outbidDismissed,
-    state.authed,
+    aucTab,
+    aucId,
+    bidValue,
+    outbidDismissed,
+    authed,
     setState,
     go,
     h,

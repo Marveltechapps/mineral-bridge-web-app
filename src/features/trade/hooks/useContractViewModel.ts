@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useTradeState } from '@/hooks/useAppState';
 import { CHIP } from '@/constants/tokens';
 import { chipStyle, formatDate, money } from '@/utils/format';
 import { tradeBtn, tradePill } from '@/features/trade/constants';
@@ -18,14 +18,13 @@ const CONTRACT_HASH = '0x7a3f9c41…e2c19e';
 
 /** View model for the Contract Builder and its live document preview. */
 export function useContractViewModel() {
-  const { state, setState, go } = useAppState();
+  const { ct, ctSigned, setState, go } = useTradeState();
 
   return useMemo(() => {
-    const ct = state.ct;
-    const locked = state.ctSigned;
+    const locked = ctSigned;
 
     const setCt = (k: keyof ContractTerms, v: string) => {
-      if (state.ctSigned) return;
+      if (ctSigned) return;
       setState((s) => ({ ct: { ...s.ct, [k]: v } }));
     };
 
@@ -111,5 +110,5 @@ export function useContractViewModel() {
       },
       openLc: () => go('lc'),
     };
-  }, [state.ct, state.ctSigned, setState, go]);
+  }, [ct, ctSigned, setState, go]);
 }

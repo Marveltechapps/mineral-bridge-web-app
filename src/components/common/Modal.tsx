@@ -1,11 +1,10 @@
 import { useEffect } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useUiState } from '@/hooks/useAppState';
 import { css } from '@/utils/css';
 
 /** Centred confirmation sheet used for every prompt and acknowledgement. */
 export function Modal() {
-  const { state, setState } = useAppState();
-  const modal = state.modal;
+  const { modal, setState } = useUiState();
 
   useEffect(() => {
     if (!modal) return;

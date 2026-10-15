@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useOrdersState } from '@/hooks/useAppState';
 import { ORDERS, isClosed } from '@/constants/orders';
 import { stageLabelFor } from '@/constants/catalog';
 
@@ -21,15 +21,15 @@ const oTab = (on: boolean) =>
 
 /** View model for the "My Orders" list, its side filters and status tabs. */
 export function useOrdersViewModel() {
-  const { state, setState, go } = useAppState();
+  const { orderFilter, orderTab, setState, go } = useOrdersState();
 
   return useMemo(() => {
     const scoped = ORDERS.filter((o) =>
-      state.orderTab === 'completed' ? isClosed(o) : !isClosed(o),
+      orderTab === 'completed' ? isClosed(o) : !isClosed(o),
     );
 
     const orderRows = scoped
-      .filter((o) => state.orderFilter === 'all' || o.side.toLowerCase() === state.orderFilter)
+      .filter((o) => orderFilter === 'all' || o.side.toLowerCase() === orderFilter)
       .map((o) => ({
         ...o,
         stage: o.rejected ? 'Rejected at verification' : stageLabelFor(o.side, o.progress),
@@ -61,7 +61,7 @@ export function useOrdersViewModel() {
       ].map((f) => ({
         k: f.k,
         label: f.label,
-        style: oChip(state.orderFilter === f.k),
+        style: oChip(orderFilter === f.k),
         select: () => setState({ orderFilter: f.k }),
       })),
       orderTabs: (
@@ -72,7 +72,7 @@ export function useOrdersViewModel() {
       ).map((t) => ({
         k: t.k,
         label: t.label,
-        style: oTab(state.orderTab === t.k),
+        style: oTab(orderTab === t.k),
         select: () => setState({ orderTab: t.k }),
       })),
       orderCols: [
@@ -86,9 +86,9 @@ export function useOrdersViewModel() {
       orderRows,
       ordersEmpty: orderRows.length === 0,
       ordersEmptyMsg:
-        state.orderTab === 'completed'
+        orderTab === 'completed'
           ? 'No completed orders yet.'
           : 'No active orders right now.',
     };
-  }, [state.orderFilter, state.orderTab, setState, go]);
+  }, [orderFilter, orderTab, setState, go]);
 }

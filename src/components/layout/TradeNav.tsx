@@ -1,4 +1,4 @@
-import { useAppState } from '@/hooks/useAppState';
+import { useNavigationState } from '@/hooks/useAppState';
 import { css } from '@/utils/css';
 import type { RouteKey } from '@/types';
 
@@ -12,7 +12,7 @@ const TRADE_NAV: [RouteKey, string][] = [
 
 /** Secondary "TRADE DESK" bar linking the five institutional trade screens. */
 export function TradeNav() {
-  const { state, go } = useAppState();
+  const { route, go } = useNavigationState();
 
   return (
     <div style={css('background:#fff; border-bottom:1px solid #e7eaf3;')}>
@@ -29,7 +29,7 @@ export function TradeNav() {
           TRADE DESK
         </span>
         {TRADE_NAV.map(([r, label]) => {
-          const on = state.route === r;
+          const on = route === r;
           return (
             <button
               key={r}

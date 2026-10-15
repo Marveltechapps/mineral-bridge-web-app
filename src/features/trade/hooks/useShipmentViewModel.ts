@@ -1,14 +1,13 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useTradeState } from '@/hooks/useAppState';
 import { money } from '@/utils/format';
 import { SHIP_EVENTS } from '@/features/trade/constants';
 
 /** View model for shipment tracking: custody timeline and consignment details. */
 export function useShipmentViewModel() {
-  const { state, go } = useAppState();
+  const { ct, go } = useTradeState();
 
   return useMemo(() => {
-    const ct = state.ct;
     const total = (parseFloat(ct.price) || 0) * (parseFloat(ct.qty) || 0);
 
     return {
@@ -49,5 +48,5 @@ export function useShipmentViewModel() {
         { k: 'Insured value', v: money(total * 1.1) },
       ],
     };
-  }, [state.ct, go]);
+  }, [ct, go]);
 }

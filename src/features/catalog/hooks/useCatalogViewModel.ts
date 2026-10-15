@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useCatalogState } from '@/hooks/useAppState';
 import { CATS, PRODUCTS } from '@/constants/catalog';
 import { num } from '@/utils/format';
 import type { Product, SortKey } from '@/types';
@@ -20,10 +20,10 @@ const SORT_OPTIONS: { v: SortKey; label: string }[] = [
 
 /** View model for the "Browse minerals" catalog, with its filter rail and sort. */
 export function useCatalogViewModel() {
-  const { state, setState, go } = useAppState();
+  const { homeFilter, gradeF, sellerF, query, sort, showFilters, setState, go } = useCatalogState();
 
   return useMemo(() => {
-    const q = state.query.trim().toLowerCase();
+    const q = query.trim().toLowerCase();
     const countIn = (fn: (p: Product) => boolean) => PRODUCTS.filter(fn).length;
 
     const filterGroups = [
@@ -31,28 +31,28 @@ export function useCatalogViewModel() {
         title: 'Category',
         options: CATS.map((c) => ({
           label: c.name,
-          on: state.homeFilter === c.key,
+          on: homeFilter === c.key,
           count: countIn((p) => p.catKey === c.key),
           select: () =>
-            setState({ homeFilter: state.homeFilter === c.key ? 'all' : c.key }),
+            setState({ homeFilter: homeFilter === c.key ? 'all' : c.key }),
         })),
       },
       {
         title: 'Grade',
         options: ['99.9%', '99.95%', 'Grade A', 'VS1'].map((g) => ({
           label: g,
-          on: state.gradeF === g,
+          on: gradeF === g,
           count: countIn((p) => p.grade === g),
-          select: () => setState({ gradeF: state.gradeF === g ? '' : g }),
+          select: () => setState({ gradeF: gradeF === g ? '' : g }),
         })),
       },
       {
         title: 'Seller type',
         options: ['Refinery', 'Cooperative', 'Artisanal', 'Trader'].map((s) => ({
           label: s,
-          on: state.sellerF === s,
+          on: sellerF === s,
           count: countIn((p) => p.sellerType === s),
-          select: () => setState({ sellerF: state.sellerF === s ? '' : s }),
+          select: () => setState({ sellerF: sellerF === s ? '' : s }),
         })),
       },
     ].map((g) => ({
@@ -66,16 +66,16 @@ export function useCatalogViewModel() {
       })),
     }));
 
-    let cat = PRODUCTS.filter((p) => state.homeFilter === 'all' || p.catKey === state.homeFilter)
-      .filter((p) => !state.gradeF || p.grade === state.gradeF)
-      .filter((p) => !state.sellerF || p.sellerType === state.sellerF)
+    let cat = PRODUCTS.filter((p) => homeFilter === 'all' || p.catKey === homeFilter)
+      .filter((p) => !gradeF || p.grade === gradeF)
+      .filter((p) => !sellerF || p.sellerType === sellerF)
       .filter(
         (p) => !q || p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q),
       );
 
-    if (state.sort === 'low') cat = cat.slice().sort((a, b) => num(a.price) - num(b.price));
-    if (state.sort === 'high') cat = cat.slice().sort((a, b) => num(b.price) - num(a.price));
-    if (state.sort === 'name') cat = cat.slice().sort((a, b) => a.name.localeCompare(b.name));
+    if (sort === 'low') cat = cat.slice().sort((a, b) => num(a.price) - num(b.price));
+    if (sort === 'high') cat = cat.slice().sort((a, b) => num(b.price) - num(a.price));
+    if (sort === 'name') cat = cat.slice().sort((a, b) => a.name.localeCompare(b.name));
 
     const catalogProducts = cat.map((p) => ({
       id: p.id,
@@ -95,32 +95,32 @@ export function useCatalogViewModel() {
     }));
 
     const nActive =
-      (state.homeFilter !== 'all' ? 1 : 0) + (state.gradeF ? 1 : 0) + (state.sellerF ? 1 : 0);
+      (homeFilter !== 'all' ? 1 : 0) + (gradeF ? 1 : 0) + (sellerF ? 1 : 0);
 
     return {
       filterGroups,
       catalogProducts,
       catalogTitle:
-        state.homeFilter === 'all'
+        homeFilter === 'all'
           ? 'Mineral Bridge Assured'
-          : (CATS.find((c) => c.key === state.homeFilter) || { name: '' }).name,
+          : (CATS.find((c) => c.key === homeFilter) || { name: '' }).name,
       catalogCount: String(cat.length),
       catalogEmpty: cat.length === 0,
-      sortOptions: SORT_OPTIONS.map((s) => ({ ...s, sel: state.sort === s.v })),
-      sortValue: state.sort,
+      sortOptions: SORT_OPTIONS.map((s) => ({ ...s, sel: sort === s.v })),
+      sortValue: sort,
       filterBtnStyle:
         'display:flex; align-items:center; gap:9px; height:44px; padding:0 18px; border-radius:11px; cursor:pointer; font-size:13.5px; font-weight:800; border:1px solid ' +
-        (state.showFilters ? '#1e2a5a' : '#dde2f0') +
+        (showFilters ? '#1e2a5a' : '#dde2f0') +
         '; background:' +
-        (state.showFilters ? '#1e2a5a' : '#fff') +
+        (showFilters ? '#1e2a5a' : '#fff') +
         '; color:' +
-        (state.showFilters ? '#fff' : '#141a2e') +
+        (showFilters ? '#fff' : '#141a2e') +
         ';',
-      filterRailStyle: state.showFilters
+      filterRailStyle: showFilters
         ? 'position:sticky; top:96px; background:#fff; border:1px solid #e7eaf3; border-radius:18px; padding:22px; box-shadow:0 4px 14px rgba(20,26,46,.05);'
         : 'display:none;',
       activeFilterCount: nActive ? String(nActive) : '',
-      catalogGrid: state.showFilters
+      catalogGrid: showFilters
         ? 'display:grid; grid-template-columns:264px 1fr; gap:28px; align-items:start;'
         : 'display:grid; grid-template-columns:1fr; gap:28px; align-items:start;',
       clearFilters: () => setState({ homeFilter: 'all', gradeF: '', sellerF: '', query: '' }),
@@ -129,12 +129,12 @@ export function useCatalogViewModel() {
         setState({ sort: e.target.value as SortKey }),
     };
   }, [
-    state.homeFilter,
-    state.gradeF,
-    state.sellerF,
-    state.query,
-    state.sort,
-    state.showFilters,
+    homeFilter,
+    gradeF,
+    sellerF,
+    query,
+    sort,
+    showFilters,
     setState,
     go,
   ]);

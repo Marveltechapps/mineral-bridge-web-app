@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useAcademyState } from '@/hooks/useAppState';
 import { COURSES, LESSON_TITLES } from '@/constants/courses';
 
 const acChip = (on: boolean) =>
@@ -13,10 +13,10 @@ const acChip = (on: boolean) =>
 
 /** View model for the ASM Academy listing and a single course. */
 export function useAcademyViewModel() {
-  const { state, setState, go } = useAppState();
+  const { acTrack, courseId, lessonIdx, lessonDone, playing, setState, go } = useAcademyState();
 
   return useMemo(() => {
-    const courses = COURSES.filter((c) => c.track === state.acTrack).map((c) => {
+    const courses = COURSES.filter((c) => c.track === acTrack).map((c) => {
       const pct = Math.round((c.done / c.lessons) * 100);
       return {
         ...c,
@@ -35,8 +35,8 @@ export function useAcademyViewModel() {
       };
     });
 
-    const cc = COURSES.find((c) => c.id === state.courseId) || COURSES[0];
-    const ccDone = state.lessonDone[cc.id] != null ? state.lessonDone[cc.id] : cc.done;
+    const cc = COURSES.find((c) => c.id === courseId) || COURSES[0];
+    const ccDone = lessonDone[cc.id] != null ? lessonDone[cc.id] : cc.done;
     const ccPct = Math.round((ccDone / cc.lessons) * 100);
 
     const course = {
@@ -44,7 +44,7 @@ export function useAcademyViewModel() {
       progress: ccPct + '%',
       progressLabel: ccPct + '%',
       currentLesson:
-        'Lesson ' + (state.lessonIdx + 1) + ' · ' + (LESSON_TITLES[state.lessonIdx] || 'Overview'),
+        'Lesson ' + (lessonIdx + 1) + ' · ' + (LESSON_TITLES[lessonIdx] || 'Overview'),
       lessonLength: '07:20',
       canCertify: ccDone >= cc.lessons,
       desc:
@@ -58,7 +58,7 @@ export function useAcademyViewModel() {
       ],
       lessons: Array.from({ length: cc.lessons }).map((_, i) => {
         const done = i < ccDone;
-        const cur = i === state.lessonIdx;
+        const cur = i === lessonIdx;
         return {
           i,
           title: 'Lesson ' + (i + 1) + ' · ' + (LESSON_TITLES[i] || 'Module ' + (i + 1)),
@@ -87,7 +87,7 @@ export function useAcademyViewModel() {
       ).map((t) => ({
         k: t.k,
         label: t.label,
-        style: acChip(state.acTrack === t.k),
+        style: acChip(acTrack === t.k),
         select: () => setState({ acTrack: t.k }),
       })),
       academyStats: [
@@ -97,9 +97,9 @@ export function useAcademyViewModel() {
       ],
       courses,
       course,
-      playing: state.playing,
-      playPos: state.playing ? '42%' : '0%',
-      playTime: state.playing ? '03:04' : '00:00',
+      playing: playing,
+      playPos: playing ? '42%' : '0%',
+      playTime: playing ? '03:04' : '00:00',
       togglePlay: () => setState((s) => ({ playing: !s.playing })),
       completeLesson: () =>
         setState((s) => {
@@ -123,11 +123,11 @@ export function useAcademyViewModel() {
         }),
     };
   }, [
-    state.acTrack,
-    state.courseId,
-    state.lessonIdx,
-    state.lessonDone,
-    state.playing,
+    acTrack,
+    courseId,
+    lessonIdx,
+    lessonDone,
+    playing,
     setState,
     go,
   ]);

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useAccountState, useKycState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
 import type { IconName } from '@/types';
 
@@ -34,7 +34,18 @@ const BADGE_COLORS: Record<string, [string, string]> = {
 
 /** View model for the account screen's navigation and panels. */
 export function useAccountViewModel() {
-  const { state, setState, go } = useAppState();
+  const {
+    accountTab,
+    accForm,
+    accSaved,
+    accToggles,
+    accPayouts,
+    accDocSubmitted,
+    setState,
+    go,
+  } = useAccountState();
+  const { authed } = useSessionState();
+  const { kycStatus } = useKycState();
   const h = useActions();
 
   return useMemo(() => {
@@ -49,7 +60,7 @@ export function useAccountViewModel() {
       });
 
     const tog = (k: string, label: string, sub: string): AccountRow => {
-      const on = !!state.accToggles[k];
+      const on = !!accToggles[k];
       return {
         label,
         sub,
@@ -97,21 +108,21 @@ export function useAccountViewModel() {
       isText: true,
     });
 
-    const shown = state.accSaved || state.accForm;
+    const shown = accSaved || accForm;
     const kycStatusSub =
-      state.kycStatus === 'verified'
+      kycStatus === 'verified'
         ? 'Verified — full trading access'
-        : state.kycStatus === 'pending'
+        : kycStatus === 'pending'
           ? 'Submitted — under compliance review'
           : 'Not started — required to trade';
     const kycStatusCta =
-      state.kycStatus === 'verified'
+      kycStatus === 'verified'
         ? 'View'
-        : state.kycStatus === 'pending'
+        : kycStatus === 'pending'
           ? 'View status'
           : 'Verify now';
 
-    const extraPayouts = (state.accPayouts || []).map((p) =>
+    const extraPayouts = (accPayouts || []).map((p) =>
       badge(p.type, p.ref ? '••• ' + String(p.ref).slice(-4) : 'Linked', p.def ? 'Primary' : 'Verified'),
     );
 
@@ -134,7 +145,7 @@ export function useAccountViewModel() {
         [
           act('Identity verification (KYC)', kycStatusSub, kycStatusCta, () => go('kyc')),
           badge('Company registration', 'Certificate of incorporation', 'Pending'),
-          state.accDocSubmitted
+          accDocSubmitted
             ? badge('Mining licence', 'Submitted for compliance review', 'Pending')
             : act('Mining licence', 'Required to sell as a licensed operation', 'Upload', () =>
                 h.openAccEdit('doc'),
@@ -205,7 +216,7 @@ export function useAccountViewModel() {
       ],
     };
 
-    const accActive = accData[state.accountTab] || accData.profile;
+    const accActive = accData[accountTab] || accData.profile;
 
     return {
       accountNav: ACC_NAV.map((a) => ({
@@ -214,20 +225,20 @@ export function useAccountViewModel() {
         ic: a.ic,
         style:
           'display:flex; align-items:center; gap:12px; width:100%; padding:13px 14px; border:none; border-radius:12px; cursor:pointer; font-size:14.5px; font-weight:700; background:' +
-          (state.accountTab === a.k ? '#eef1fb' : 'transparent') +
+          (accountTab === a.k ? '#eef1fb' : 'transparent') +
           '; color:' +
-          (state.accountTab === a.k ? '#1e2a5a' : '#6b7290') +
+          (accountTab === a.k ? '#1e2a5a' : '#6b7290') +
           ';',
         select: () => setState({ accountTab: a.k }),
       })),
       accountTitle: accActive[0],
       accountRows: accActive[1],
-      accountFooter: state.authed,
+      accountFooter: authed,
       accountPrimaryLabel: accActive[2],
       accountHasDanger: accActive[3],
-      notAuthed: !state.authed,
+      notAuthed: !authed,
       accountPrimary: () => {
-        const tab = state.accountTab;
+        const tab = accountTab;
         const route: Record<string, string> = {
           profile: 'profile',
           documents: 'doc',
@@ -276,5 +287,17 @@ export function useAccountViewModel() {
           },
         }),
     };
-  }, [state, setState, go, h]);
+  }, [
+    accountTab,
+    accForm,
+    accSaved,
+    accToggles,
+    accPayouts,
+    accDocSubmitted,
+    authed,
+    kycStatus,
+    setState,
+    go,
+    h,
+  ]);
 }

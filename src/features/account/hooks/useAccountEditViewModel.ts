@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useAccountState } from '@/hooks/useAppState';
 import { FIELD } from '@/constants/tokens';
 
 const pill2 = (on: boolean) =>
@@ -48,11 +48,21 @@ const PW_META: [string, string, string][] = [
 
 /** View model for the account edit sheets (profile, doc, payout, password, sessions). */
 export function useAccountEditViewModel() {
-  const { state, setState, go } = useAppState();
+  const {
+    accEditKind,
+    accForm,
+    accDocName,
+    accDocUploaded,
+    accPayType,
+    accPayNetwork,
+    accRevoked,
+    setState,
+    go,
+  } = useAccountState();
 
   return useMemo(() => {
-    const ak = state.accEditKind;
-    const af = state.accForm;
+    const ak = accEditKind;
+    const af = accForm;
     const titles = TITLES[ak] || ['Edit', ''];
 
     const pwLen = (af.pw || '').length;
@@ -64,16 +74,16 @@ export function useAccountEditViewModel() {
     );
     const pwMeta = PW_META[pwLen ? pwScore : 0];
 
-    const payIsCrypto = state.accPayType === 'Crypto wallet';
-    const payIsBank = state.accPayType === 'Bank transfer';
+    const payIsCrypto = accPayType === 'Crypto wallet';
+    const payIsBank = accPayType === 'Bank transfer';
 
-    const sessions = SESSION_DEFS.filter((s) => !state.accRevoked[s.id]);
+    const sessions = SESSION_DEFS.filter((s) => !accRevoked[s.id]);
 
     const saveOk =
       ak === 'profile'
         ? !!(af.email || '').trim()
         : ak === 'doc'
-          ? state.accDocUploaded
+          ? accDocUploaded
           : ak === 'payout'
             ? !!(af.payAccount || '').trim()
             : ak === 'password'
@@ -98,13 +108,13 @@ export function useAccountEditViewModel() {
         style: pill2(af.role === r),
         select: () => setAcc('role', r),
       })),
-      docUploaded: state.accDocUploaded,
-      docPending: !state.accDocUploaded,
-      docFile: state.accDocName || 'document.pdf',
-      docCta: state.accDocUploaded ? 'Replace file' : 'Choose file',
+      docUploaded: accDocUploaded,
+      docPending: !accDocUploaded,
+      docFile: accDocName || 'document.pdf',
+      docCta: accDocUploaded ? 'Replace file' : 'Choose file',
       payTypes: ['Bank transfer', 'Mobile money', 'Crypto wallet'].map((p) => ({
         label: p,
-        style: pill2(state.accPayType === p),
+        style: pill2(accPayType === p),
         select: () => setState({ accPayType: p }),
       })),
       payIsCrypto,
@@ -117,7 +127,7 @@ export function useAccountEditViewModel() {
       payPlaceholder: payIsCrypto ? '0x…' : payIsBank ? '0000000000' : '+27 82 000 0000',
       networks: ['TRC-20', 'ERC-20', 'BEP-20'].map((n) => ({
         label: n,
-        style: pill2(state.accPayNetwork === n),
+        style: pill2(accPayNetwork === n),
         select: () => setState({ accPayNetwork: n }),
       })),
       defaultBox:
@@ -185,9 +195,9 @@ export function useAccountEditViewModel() {
       accDocPick: () =>
         setState({ accDocUploaded: true, accDocName: 'mining-licence-2026.pdf' }),
       accSave: () => {
-        const k = state.accEditKind;
+        const k = accEditKind;
         // Commit the draft so the account screen reflects the new values.
-        if (k === 'profile') setState({ accSaved: { ...state.accForm } });
+        if (k === 'profile') setState({ accSaved: { ...accForm } });
         if (k === 'doc') setState({ accDocSubmitted: true });
         if (k === 'payout')
           setState((x) => ({
@@ -196,7 +206,7 @@ export function useAccountEditViewModel() {
               { type: x.accPayType, ref: x.accForm.payAccount, def: x.accForm.payDefault },
             ],
           }));
-        if (k === 'password') setState({ accForm: { ...state.accForm, pw: '' } });
+        if (k === 'password') setState({ accForm: { ...accForm, pw: '' } });
 
         const msg: Record<string, [string, string]> = {
           profile: ['Profile updated', 'Your account details have been saved.'],
@@ -225,5 +235,15 @@ export function useAccountEditViewModel() {
         });
       },
     };
-  }, [state, setState, go]);
+  }, [
+    accEditKind,
+    accForm,
+    accDocName,
+    accDocUploaded,
+    accPayType,
+    accPayNetwork,
+    accRevoked,
+    setState,
+    go,
+  ]);
 }

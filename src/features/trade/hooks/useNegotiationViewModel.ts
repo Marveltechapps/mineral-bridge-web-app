@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useTradeState } from '@/hooks/useAppState';
 import { CHIP } from '@/constants/tokens';
 import { chipStyle, money } from '@/utils/format';
 import { BASE_MESSAGES, CONVS, stepDot, tradeBtn } from '@/features/trade/constants';
@@ -15,22 +15,33 @@ const statusChip = (s: string) =>
 
 /** View model for the negotiation room: conversations, offers and the summary rail. */
 export function useNegotiationViewModel() {
-  const { state, setState, go } = useAppState();
+  const {
+    negId,
+    negExtra,
+    negDraft,
+    negAccepted,
+    negCountered,
+    ctSigned,
+    ctFor,
+    lcStatus,
+    setState,
+    go,
+  } = useTradeState();
 
   return useMemo(() => {
     const all = (id: string): NegotiationMessage[] =>
-      (BASE_MESSAGES[id] || []).concat(state.negExtra[id] || []);
+      (BASE_MESSAGES[id] || []).concat(negExtra[id] || []);
 
-    const cid = state.negId;
+    const cid = negId;
     const conv = CONVS.find((c) => c.id === cid) || CONVS[0];
     const raw = all(cid);
-    const accId = state.negAccepted[cid];
+    const accId = negAccepted[cid];
 
     const isOpen = (m: NegotiationMessage): boolean =>
-      isOffer(m) && !!m.open && !m.closed && !state.negCountered[m.id] && !accId;
+      isOffer(m) && !!m.open && !m.closed && !negCountered[m.id] && !accId;
 
     const statusOf = (id: string): string => {
-      if (state.negAccepted[id]) return 'Agreed';
+      if (negAccepted[id]) return 'Agreed';
       const lo = [...all(id)].reverse().find(isOffer);
       return lo && lo.who === 'me' ? 'Awaiting reply' : 'Offer received';
     };
@@ -103,7 +114,7 @@ export function useNegotiationViewModel() {
           ? mine
             ? 'Awaiting reply'
             : 'Open'
-          : m.closed || (state.negCountered[m.id] ? 'Countered' : 'Closed');
+          : m.closed || (negCountered[m.id] ? 'Countered' : 'Closed');
       const c = acc ? CHIP.GREEN : open ? (mine ? CHIP.BLUE : CHIP.AMBER) : CHIP.GREY;
 
       return {
@@ -150,18 +161,18 @@ export function useNegotiationViewModel() {
     const agreed = raw.find((m) => isOffer(m) && m.id === accId) as NegotiationOffer | undefined;
     const terms = agreed || ([...raw].reverse().find(isOffer) as NegotiationOffer | undefined);
 
-    const signedThis = state.ctSigned && state.ctFor === cid;
+    const signedThis = ctSigned && ctFor === cid;
     const stp: [string, boolean][] = [
       ['Terms agreed', !!agreed],
       ['Contract drafted', !!agreed],
       ['Contract signed', signedThis],
-      ['LC opened', signedThis && state.lcStatus !== 'Applied'],
+      ['LC opened', signedThis && lcStatus !== 'Applied'],
     ];
     const firstOpen = stp.findIndex((x) => !x[1]);
 
     return {
       conv,
-      draft: state.negDraft,
+      draft: negDraft,
       msgs,
       convs: CONVS.map((c) => {
         const on = c.id === cid;
@@ -182,7 +193,7 @@ export function useNegotiationViewModel() {
       }),
       onDraft: (e: React.ChangeEvent<HTMLInputElement>) => setState({ negDraft: e.target.value }),
       send: () => {
-        const t = (state.negDraft || '').trim();
+        const t = (negDraft || '').trim();
         if (!t) return;
         setState({ negDraft: '' });
         push({ k: 'text', who: 'me', text: t, time: 'Now' });
@@ -234,7 +245,7 @@ export function useNegotiationViewModel() {
           : 'Accept the counterparty’s offer to lock terms and draft the contract.',
         openContract: () => {
           if (!agreed) return;
-          if (state.ctFor !== cid) {
+          if (ctFor !== cid) {
             const p = agreed.inc.split(' ');
             setState((s) => ({
               ctFor: cid,
@@ -258,14 +269,14 @@ export function useNegotiationViewModel() {
       },
     };
   }, [
-    state.negId,
-    state.negExtra,
-    state.negDraft,
-    state.negAccepted,
-    state.negCountered,
-    state.ctSigned,
-    state.ctFor,
-    state.lcStatus,
+    negId,
+    negExtra,
+    negDraft,
+    negAccepted,
+    negCountered,
+    ctSigned,
+    ctFor,
+    lcStatus,
     setState,
     go,
   ]);

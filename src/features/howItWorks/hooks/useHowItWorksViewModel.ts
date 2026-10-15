@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useHowItWorksState } from '@/hooks/useAppState';
 import type { Chapter, IconName } from '@/types';
 
 export const CHAPTERS: Chapter[] = [
@@ -114,11 +114,11 @@ const chipCh = (on: boolean) =>
 
 /** View model shared by the "How it works" overlay and its full page. */
 export function useHowItWorksViewModel() {
-  const { state, setState } = useAppState();
+  const { hiwChapter, hiwPlaying, hiwTopic, hiwOverlay, setState } = useHowItWorksState();
 
   return useMemo(() => {
-    const ci = Math.min(CHAPTERS.length - 1, state.hiwChapter);
-    const secs = CHAPTER_SECONDS[ci] + (state.hiwPlaying ? 4 : 0);
+    const ci = Math.min(CHAPTERS.length - 1, hiwChapter);
+    const secs = CHAPTER_SECONDS[ci] + (hiwPlaying ? 4 : 0);
     const mmss = (s: number) => '0:' + String(Math.min(TOTAL_SECONDS, s)).padStart(2, '0');
 
     const hiw = {
@@ -126,9 +126,9 @@ export function useHowItWorksViewModel() {
       chapterTitle: CHAPTERS[ci].t,
       caption: CHAPTERS[ci].cap,
       frameStyle: 'position:absolute; inset:0; background:' + CHAPTERS[ci].grad + ';',
-      playing: state.hiwPlaying,
-      paused: !state.hiwPlaying,
-      showBigPlay: !state.hiwPlaying,
+      playing: hiwPlaying,
+      paused: !hiwPlaying,
+      showBigPlay: !hiwPlaying,
       pos: Math.round((secs / TOTAL_SECONDS) * 100) + '%',
       clock: mmss(secs) + ' / 0:47',
       chapters: CHAPTERS.map((_, i) => ({
@@ -141,7 +141,7 @@ export function useHowItWorksViewModel() {
     };
 
     const hiwTopics = TOPIC_DEFS.map((t) => {
-      const open = state.hiwTopic === t.k;
+      const open = hiwTopic === t.k;
       return {
         k: t.k,
         title: t.title,
@@ -165,6 +165,6 @@ export function useHowItWorksViewModel() {
       };
     });
 
-    return { hiw, hiwTopics, overlayOpen: state.hiwOverlay };
-  }, [state.hiwChapter, state.hiwPlaying, state.hiwTopic, state.hiwOverlay, setState]);
+    return { hiw, hiwTopics, overlayOpen: hiwOverlay };
+  }, [hiwChapter, hiwPlaying, hiwTopic, hiwOverlay, setState]);
 }

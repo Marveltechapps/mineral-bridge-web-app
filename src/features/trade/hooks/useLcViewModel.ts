@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useTradeState } from '@/hooks/useAppState';
 import { CHIP } from '@/constants/tokens';
 import { chipStyle, formatDate, money } from '@/utils/format';
 import {
@@ -18,14 +18,13 @@ const BL_DATES = { ontime: '2026-10-06', late: '2026-10-18' } as const;
  * the on-board date, the discrepancy list and whether the presentation complies.
  */
 export function useLcState() {
-  const { state } = useAppState();
-  const ct = state.ct;
+  const { ct, lcBLDate, lcDocs } = useTradeState();
   const total = (parseFloat(ct.price) || 0) * (parseFloat(ct.qty) || 0);
-  const blDate = BL_DATES[state.lcBLDate];
+  const blDate = BL_DATES[lcBLDate];
   const lateBL = blDate > (ct.to || '');
 
-  const disc = LC_DOCS.filter((d) => !state.lcDocs[d[0]]).map((d) => d[1] + ' not presented');
-  if (state.lcDocs.bl && lateBL) {
+  const disc = LC_DOCS.filter((d) => !lcDocs[d[0]]).map((d) => d[1] + ' not presented');
+  if (lcDocs.bl && lateBL) {
     disc.push(
       'Bill of lading on-board date (' +
         formatDate(blDate) +
@@ -40,27 +39,37 @@ export function useLcState() {
 
 /** View model for the LC Workspace: milestones, checklist and presentation. */
 export function useLcViewModel() {
-  const { state, setState, go } = useAppState();
+  const {
+    lcStatus,
+    lcDocs,
+    lcBLDate,
+    lcCheck,
+    lcPresented,
+    lcExam,
+    lcPaid,
+    setState,
+    go,
+  } = useTradeState();
   const { ct, total, disc, ok } = useLcState();
 
   return useMemo(() => {
-    const si = LC_STATUS_ORDER.indexOf(state.lcStatus);
+    const si = LC_STATUS_ORDER.indexOf(lcStatus);
     const done = [
       true,
       si >= 1,
       si >= 2,
       si >= 3,
       si >= 3,
-      state.lcPresented || state.lcExam === 'accepted',
-      state.lcExam === 'accepted',
-      state.lcPaid,
+      lcPresented || lcExam === 'accepted',
+      lcExam === 'accepted',
+      lcPaid,
     ];
     const cur = done.indexOf(false);
-    const canPresent = state.lcCheck && ok && si >= 3 && !state.lcPresented && !state.lcPaid;
+    const canPresent = lcCheck && ok && si >= 3 && !lcPresented && !lcPaid;
 
-    const lcChip = state.lcPaid
+    const lcChip = lcPaid
       ? CHIP.GREEN
-      : state.lcExam === 'refused'
+      : lcExam === 'refused'
         ? (['#fdecec', '#b91c1c'] as const)
         : si >= 3
           ? CHIP.BLUE
@@ -68,13 +77,13 @@ export function useLcViewModel() {
 
     return {
       headline: 'LC-2026-0419 · ' + ct.lcType + ' · ' + ct.tenor + ' · ' + money(total),
-      statusLabel: state.lcPaid
+      statusLabel: lcPaid
         ? 'PAID'
-        : state.lcExam === 'refused'
+        : lcExam === 'refused'
           ? 'REFUSED'
-          : state.lcPresented
+          : lcPresented
             ? 'UNDER EXAMINATION'
-            : state.lcStatus.toUpperCase(),
+            : lcStatus.toUpperCase(),
       statusChip: chipStyle(lcChip[0], lcChip[1]),
       milestones: LC_MILESTONES.map((l, i) => {
         const s = done[i] ? 'done' : i === cur ? 'cur' : 'todo';
@@ -103,7 +112,7 @@ export function useLcViewModel() {
         };
       }),
       docs: LC_DOCS.map(([k, n, s]) => {
-        const up = !!state.lcDocs[k];
+        const up = !!lcDocs[k];
         return {
           k,
           name: n,
@@ -123,15 +132,15 @@ export function useLcViewModel() {
         ] as const
       ).map(([k, l]) => ({
         label: l,
-        style: tradePill(state.lcBLDate === k),
+        style: tradePill(lcBLDate === k),
         select: () => setState({ lcBLDate: k, lcCheck: false }),
       })),
       precheck: () => setState({ lcCheck: true }),
-      compliant: state.lcCheck && ok,
-      discrepant: state.lcCheck && !ok,
+      compliant: lcCheck && ok,
+      discrepant: lcCheck && !ok,
       disc: disc.map((v) => ({ v })),
       discTitle: disc.length + (disc.length === 1 ? ' discrepancy' : ' discrepancies') + ' found',
-      refused: state.lcExam === 'refused',
+      refused: lcExam === 'refused',
       details: [
         { k: 'LC number', v: 'LC-2026-0419' },
         { k: 'Applicant', v: 'Marvel Trading Co.' },
@@ -146,18 +155,18 @@ export function useLcViewModel() {
       ],
       presentBlocked: !canPresent,
       presentStyle: tradeBtn(canPresent, '#16a34a') + ' width:100%; margin-top:14px;',
-      presentLabel: state.lcPaid
+      presentLabel: lcPaid
         ? 'Payment released'
-        : state.lcPresented
+        : lcPresented
           ? 'Presented to bank'
           : 'Present documents to bank',
-      presentHint: state.lcPaid
+      presentHint: lcPaid
         ? 'Settlement complete.'
         : si < 3
           ? 'The LC must be confirmed in the Bank Portal before documents can be presented.'
-          : state.lcPresented
+          : lcPresented
             ? 'With the issuing bank for examination.'
-            : !state.lcCheck
+            : !lcCheck
               ? 'Run the pre-check first.'
               : !ok
                 ? 'Resolve the discrepancies, then re-run the pre-check.'
@@ -182,13 +191,13 @@ export function useLcViewModel() {
       goShip: () => go('shipment'),
     };
   }, [
-    state.lcStatus,
-    state.lcDocs,
-    state.lcBLDate,
-    state.lcCheck,
-    state.lcPresented,
-    state.lcExam,
-    state.lcPaid,
+    lcStatus,
+    lcDocs,
+    lcBLDate,
+    lcCheck,
+    lcPresented,
+    lcExam,
+    lcPaid,
     ct,
     total,
     disc,

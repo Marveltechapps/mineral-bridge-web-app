@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useCatalogState } from '@/hooks/useAppState';
 import { BUY_STAGES, CATS, PRODUCTS, SELL_STAGES } from '@/constants/catalog';
 import type { Product } from '@/types';
 
@@ -14,7 +14,7 @@ const filterChip = (on: boolean) =>
 
 /** View model for the home screen, ported from the design's `renderVals()`. */
 export function useHomeViewModel() {
-  const { state, setState, go } = useAppState();
+  const { homeFilter, query, setState, go } = useCatalogState();
 
   return useMemo(() => {
     const heroStats = [
@@ -62,13 +62,13 @@ export function useHomeViewModel() {
       .map((f) => ({
         key: f.key,
         label: f.label,
-        style: filterChip(state.homeFilter === f.key),
+        style: filterChip(homeFilter === f.key),
         select: () => setState({ homeFilter: f.key }),
       }));
 
-    const q = state.query.trim().toLowerCase();
+    const q = query.trim().toLowerCase();
     const list = PRODUCTS.filter(
-      (p) => state.homeFilter === 'all' || p.catKey === state.homeFilter,
+      (p) => homeFilter === 'all' || p.catKey === homeFilter,
     ).filter(
       (p) => !q || p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q),
     );
@@ -135,5 +135,5 @@ export function useHomeViewModel() {
       sellPerks,
       pipelines,
     };
-  }, [state.homeFilter, state.query, setState, go]);
+  }, [homeFilter, query, setState, go]);
 }

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { usePassportState } from '@/hooks/useAppState';
 import { PRODUCTS } from '@/constants/catalog';
 import type { Product } from '@/types';
 
@@ -22,18 +22,18 @@ export const passportId = (p: Product): string => {
 
 /** Mineral Passport lookup shown on the home screen. */
 export function usePassportViewModel() {
-  const { state, setState } = useAppState();
+  const { passportQ, passportShown, setState } = usePassportState();
 
   return useMemo(() => {
-    const q = (state.passportQ || '').trim().toUpperCase();
+    const q = (passportQ || '').trim().toUpperCase();
     const hit = PRODUCTS.find((p) => passportId(p) === q);
 
     return {
-      q: state.passportQ,
+      q: passportQ,
       id: q,
-      idle: !state.passportShown,
-      found: state.passportShown && !!hit,
-      notFound: state.passportShown && !hit,
+      idle: !passportShown,
+      found: passportShown && !!hit,
+      notFound: passportShown && !hit,
       onQ: (e: React.ChangeEvent<HTMLInputElement>) =>
         setState({ passportQ: e.target.value, passportShown: false }),
       verify: () => setState({ passportShown: true }),
@@ -55,5 +55,5 @@ export function usePassportViewModel() {
           ]
         : [],
     };
-  }, [state.passportQ, state.passportShown, setState]);
+  }, [passportQ, passportShown, setState]);
 }

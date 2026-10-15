@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useSessionState } from '@/hooks/useAppState';
 import { FIELD } from '@/constants/tokens';
 import type { AuthMethod } from '@/types';
 
@@ -26,11 +26,20 @@ const authTab = (on: boolean) =>
 
 /** View model for the sign-in / sign-up / OTP overlay. */
 export function useAuthViewModel() {
-  const { state, setState } = useAppState();
+  const {
+    authed,
+    authStage,
+    authMethod,
+    authMode,
+    authRole,
+    authOpen,
+    authVerifying,
+    setState,
+  } = useSessionState();
 
   return useMemo(() => {
-    const isSignup = state.authMode === 'signup';
-    const isOtp = state.authStage === 'otp';
+    const isSignup = authMode === 'signup';
+    const isOtp = authStage === 'otp';
 
     const methods: { id: AuthMethod; label: string }[] = [
       { id: 'mobile', label: 'Mobile' },
@@ -41,12 +50,12 @@ export function useAuthViewModel() {
     return {
       lbl: FIELD.lbl,
       inp: FIELD.inp,
-      open: state.authOpen && !state.authed,
+      open: authOpen && !authed,
       showTabs: !isOtp,
       isLogin: !isSignup && !isOtp,
       isSignup: isSignup && !isOtp,
       isOtp,
-      verifying: state.authVerifying,
+      verifying: authVerifying,
       headline: isSignup
         ? 'Start trading assured minerals.'
         : 'Welcome back to Mineral Bridge.',
@@ -58,7 +67,7 @@ export function useAuthViewModel() {
         { v: 'KYC-verified counterparties' },
         { v: 'Full assay documentation' },
       ],
-      target: state.authMethod === 'email' ? 'your email' : '+27 82 ••• 0000',
+      target: authMethod === 'email' ? 'your email' : '+27 82 ••• 0000',
       loginTab: segTab(!isSignup),
       signupTab: segTab(isSignup),
       indicator:
@@ -68,19 +77,19 @@ export function useAuthViewModel() {
       methods: methods.map((m) => ({
         id: m.id,
         label: m.label,
-        style: authTab(state.authMethod === m.id),
+        style: authTab(authMethod === m.id),
         select: () => setState({ authMethod: m.id }),
       })),
       fieldLabel:
-        state.authMethod === 'email'
+        authMethod === 'email'
           ? 'EMAIL ADDRESS'
-          : state.authMethod === 'whatsapp'
+          : authMethod === 'whatsapp'
             ? 'WHATSAPP NUMBER'
             : 'MOBILE NUMBER',
-      isEmail: state.authMethod === 'email',
+      isEmail: authMethod === 'email',
       roles: ['Buyer', 'Seller / miner', 'Both'].map((r) => ({
         label: r,
-        style: roleChip(state.authRole === r),
+        style: roleChip(authRole === r),
         select: () => setState({ authRole: r }),
       })),
       otpBoxes: [0, 1, 2, 3].map((i) => ({
@@ -122,5 +131,14 @@ export function useAuthViewModel() {
         }, VERIFY_MS);
       },
     };
-  }, [state, setState]);
+  }, [
+    authed,
+    authStage,
+    authMethod,
+    authMode,
+    authRole,
+    authOpen,
+    authVerifying,
+    setState,
+  ]);
 }

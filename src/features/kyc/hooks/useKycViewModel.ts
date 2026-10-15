@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useKycState } from '@/hooks/useAppState';
 import type { IconName, KycStage, RouteKey } from '@/types';
 
 const KSTAGES: KycStage[] = ['why', 'type', 'capture', 'live', 'review', 'pending'];
@@ -73,16 +73,16 @@ const WHY: { title: string; sub: string; bg: string; color: string; ic: IconName
 
 /** View model for the six-stage identity-verification flow. */
 export function useKycViewModel() {
-  const { state, setState, go } = useAppState();
+  const { kycStage, kycIdType, kycShots, kycSelfie, kycStatus, kycReturn, setState, go } = useKycState();
 
   return useMemo(() => {
-    const ks = state.kycStage;
+    const ks = kycStage;
     const kIdx = KSTAGES.indexOf(ks);
-    const activeId = ID_TYPES.find((t) => t.k === state.kycIdType) || ID_TYPES[0];
-    const needBack = state.kycIdType !== 'passport';
+    const activeId = ID_TYPES.find((t) => t.k === kycIdType) || ID_TYPES[0];
+    const needBack = kycIdType !== 'passport';
 
     const kycSides = (needBack ? ['Front', 'Back'] : ['Photo page']).map((lbl) => {
-      const done = !!state.kycShots[lbl];
+      const done = !!kycShots[lbl];
       return {
         label: lbl,
         done,
@@ -110,16 +110,16 @@ export function useKycViewModel() {
         !shotsDone,
       ],
       live: [
-        state.kycSelfie ? 'Continue' : 'Take selfie first',
-        state.kycSelfie ? '#1e2a5a' : '#eef1f8',
-        state.kycSelfie ? '#fff' : '#5b638a',
-        !state.kycSelfie,
+        kycSelfie ? 'Continue' : 'Take selfie first',
+        kycSelfie ? '#1e2a5a' : '#eef1f8',
+        kycSelfie ? '#fff' : '#5b638a',
+        !kycSelfie,
       ],
       review: ['Submit for verification', '#16a34a', '#fff'],
       pending: [
-        state.kycStatus === 'verified'
+        kycStatus === 'verified'
           ? 'Start trading'
-          : state.kycReturn
+          : kycReturn
             ? 'Continue where you left off'
             : 'Back to account',
         '#1e2a5a',
@@ -127,7 +127,7 @@ export function useKycViewModel() {
       ],
     };
     const kycCta = ctaMap[ks] || ['Continue', '#1e2a5a', '#fff'];
-    const approved = state.kycStatus === 'verified';
+    const approved = kycStatus === 'verified';
 
     const kyc = {
       isWhy: ks === 'why',
@@ -139,14 +139,14 @@ export function useKycViewModel() {
       progress: Math.round(((kIdx + 1) / KSTAGES.length) * 100) + '%',
       stepLabel: 'Step ' + (kIdx + 1) + ' of 6',
       idLabel: activeId.label.toLowerCase(),
-      selfieDone: state.kycSelfie,
-      selfiePending: !state.kycSelfie,
-      selfieCta: state.kycSelfie ? 'Retake selfie' : 'Take selfie',
-      livenessHint: state.kycSelfie
+      selfieDone: kycSelfie,
+      selfiePending: !kycSelfie,
+      selfieCta: kycSelfie ? 'Retake selfie' : 'Take selfie',
+      livenessHint: kycSelfie
         ? 'Face captured — looks good'
         : 'Centre your face in the frame',
       showSkip: ks !== 'pending',
-      skipLabel: state.kycReturn ? 'Skip for now' : 'Do this later',
+      skipLabel: kycReturn ? 'Skip for now' : 'Do this later',
       isApproved: approved,
       notApproved: !approved,
       ctaLabel: kycCta[0],
@@ -184,7 +184,7 @@ export function useKycViewModel() {
       kycSides,
       kycWhy: WHY,
       kycIdTypes: ID_TYPES.map((t) => {
-        const on = state.kycIdType === t.k;
+        const on = kycIdType === t.k;
         return {
           ...t,
           on,
@@ -212,15 +212,15 @@ export function useKycViewModel() {
         { k: 'Document type', v: activeId.label, ok: true },
         {
           k: 'Front image',
-          v: state.kycShots['Front'] || state.kycShots['Photo page'] ? 'Captured' : 'Missing',
-          ok: !!(state.kycShots['Front'] || state.kycShots['Photo page']),
+          v: kycShots['Front'] || kycShots['Photo page'] ? 'Captured' : 'Missing',
+          ok: !!(kycShots['Front'] || kycShots['Photo page']),
         },
         {
           k: 'Back image',
-          v: needBack ? (state.kycShots['Back'] ? 'Captured' : 'Missing') : 'Not required',
-          ok: needBack ? !!state.kycShots['Back'] : true,
+          v: needBack ? (kycShots['Back'] ? 'Captured' : 'Missing') : 'Not required',
+          ok: needBack ? !!kycShots['Back'] : true,
         },
-        { k: 'Liveness selfie', v: state.kycSelfie ? 'Captured' : 'Missing', ok: state.kycSelfie },
+        { k: 'Liveness selfie', v: kycSelfie ? 'Captured' : 'Missing', ok: kycSelfie },
         { k: 'Full name', v: 'Marvel Tech', ok: true },
       ],
       kycNext: [
@@ -249,12 +249,12 @@ export function useKycViewModel() {
       kycApprove: () => setState({ kycStatus: 'verified' }),
       kycSkip: () => {
         const back: RouteKey =
-          state.kycReturn && state.kycReturn !== true ? (state.kycReturn as RouteKey) : 'home';
+          kycReturn && kycReturn !== true ? (kycReturn as RouteKey) : 'home';
         setState({ kycReturn: false });
         go(back);
       },
       kycBack: () => {
-        const i = KSTAGES.indexOf(state.kycStage);
+        const i = KSTAGES.indexOf(kycStage);
         if (i <= 0) {
           go('account');
           return;
@@ -262,22 +262,22 @@ export function useKycViewModel() {
         setState({ kycStage: KSTAGES[i - 1] });
       },
       kycNextStage: () => {
-        const i = KSTAGES.indexOf(state.kycStage);
-        if (state.kycStage === 'capture') {
-          const need = state.kycIdType !== 'passport' ? ['Front', 'Back'] : ['Photo page'];
-          if (!need.every((k) => state.kycShots[k])) return;
+        const i = KSTAGES.indexOf(kycStage);
+        if (kycStage === 'capture') {
+          const need = kycIdType !== 'passport' ? ['Front', 'Back'] : ['Photo page'];
+          if (!need.every((k) => kycShots[k])) return;
         }
-        if (state.kycStage === 'live' && !state.kycSelfie) return;
-        if (state.kycStage === 'pending') {
-          if (state.kycReturn) {
+        if (kycStage === 'live' && !kycSelfie) return;
+        if (kycStage === 'pending') {
+          if (kycReturn) {
             setState({ kycReturn: false });
-            go(state.kycReturn === true ? 'orders' : (state.kycReturn as RouteKey));
+            go(kycReturn === true ? 'orders' : (kycReturn as RouteKey));
             return;
           }
           go('account');
           return;
         }
-        if (state.kycStage === 'review') {
+        if (kycStage === 'review') {
           setState({ kycStage: 'pending', kycStatus: 'pending' });
           requestAnimationFrame(() => window.scrollTo({ top: 0 }));
           return;
@@ -287,12 +287,12 @@ export function useKycViewModel() {
       },
     };
   }, [
-    state.kycStage,
-    state.kycIdType,
-    state.kycShots,
-    state.kycSelfie,
-    state.kycStatus,
-    state.kycReturn,
+    kycStage,
+    kycIdType,
+    kycShots,
+    kycSelfie,
+    kycStatus,
+    kycReturn,
     setState,
     go,
   ]);

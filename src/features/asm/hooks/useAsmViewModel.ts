@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useAsmState } from '@/hooks/useAppState';
 import { FIELD } from '@/constants/tokens';
 import type { AsmStep } from '@/types';
 
@@ -44,16 +44,16 @@ const mChip = (on: boolean) =>
 
 /** View model for the five-step artisanal site registration. */
 export function useAsmViewModel() {
-  const { state, setState, go } = useAppState();
+  const { asmStep, asmElig, asmMin, asmDocs, asmGps, asmForm, setState, go } = useAsmState();
 
   return useMemo(() => {
-    const ai = ASTEPS.indexOf(state.asmStep);
-    const pickedMinerals = Object.keys(state.asmMin).filter((k) => state.asmMin[k]);
-    const eligCount = ELIG.filter((_, i) => state.asmElig[i]).length;
-    const docsDone = ADOCS.every((d) => state.asmDocs[d.k]);
+    const ai = ASTEPS.indexOf(asmStep);
+    const pickedMinerals = Object.keys(asmMin).filter((k) => asmMin[k]);
+    const eligCount = ELIG.filter((_, i) => asmElig[i]).length;
+    const docsDone = ADOCS.every((d) => asmDocs[d.k]);
     const siteOk =
-      !!(state.asmForm.site || '').trim() &&
-      !!(state.asmForm.country || '').trim() &&
+      !!(asmForm.site || '').trim() &&
+      !!(asmForm.country || '').trim() &&
       pickedMinerals.length > 0;
 
     const ctaMap: Record<AsmStep, [string, string, string, boolean]> = {
@@ -65,10 +65,10 @@ export function useAsmViewModel() {
         !siteOk,
       ],
       gps: [
-        state.asmGps ? 'Continue' : 'Capture location first',
-        state.asmGps ? '#1e2a5a' : OFF_BG,
-        state.asmGps ? '#fff' : OFF_FG,
-        !state.asmGps,
+        asmGps ? 'Continue' : 'Capture location first',
+        asmGps ? '#1e2a5a' : OFF_BG,
+        asmGps ? '#fff' : OFF_FG,
+        !asmGps,
       ],
       docs: [
         docsDone ? 'Submit registration' : 'Upload all documents',
@@ -78,15 +78,15 @@ export function useAsmViewModel() {
       ],
       done: ['Go to Mining hub', '#1e2a5a', '#fff', false],
     };
-    const aCta = ctaMap[state.asmStep];
-    const titles = TITLES[state.asmStep];
+    const aCta = ctaMap[asmStep];
+    const titles = TITLES[asmStep];
 
     const asm = {
-      isElig: state.asmStep === 'elig',
-      isSite: state.asmStep === 'site',
-      isGps: state.asmStep === 'gps',
-      isDocs: state.asmStep === 'docs',
-      isDone: state.asmStep === 'done',
+      isElig: asmStep === 'elig',
+      isSite: asmStep === 'site',
+      isGps: asmStep === 'gps',
+      isDocs: asmStep === 'docs',
+      isDone: asmStep === 'done',
       progress: Math.round(((ai + 1) / ASTEPS.length) * 100) + '%',
       stepLabel: 'Step ' + (ai + 1) + ' of 5',
       title: titles[0],
@@ -101,11 +101,11 @@ export function useAsmViewModel() {
         '; cursor:' +
         (aCta[3] ? 'not-allowed' : 'pointer') +
         ';',
-      canBack: ai > 0 && state.asmStep !== 'done',
+      canBack: ai > 0 && asmStep !== 'done',
       eligShort: eligCount < ELIG.length,
-      gpsLocked: state.asmGps,
-      gpsPending: !state.asmGps,
-      gpsCta: state.asmGps ? 'Recapture location' : 'Capture GPS location',
+      gpsLocked: asmGps,
+      gpsPending: !asmGps,
+      gpsCta: asmGps ? 'Recapture location' : 'Capture GPS location',
       coords: '−11.6604, 27.4794',
     };
 
@@ -113,9 +113,9 @@ export function useAsmViewModel() {
       lbl: FIELD.lbl,
       inp: FIELD.inp,
       asm,
-      asmForm: state.asmForm,
+      asmForm: asmForm,
       asmElig: ELIG.map((v, i) => {
-        const on = !!state.asmElig[i];
+        const on = !!asmElig[i];
         return {
           i,
           v,
@@ -137,11 +137,11 @@ export function useAsmViewModel() {
       }),
       asmMinerals: ['Gold', 'Silver', 'Copper', 'Diamond', 'Emerald', 'Quartz'].map((l) => ({
         label: l,
-        style: mChip(!!state.asmMin[l]),
+        style: mChip(!!asmMin[l]),
         toggle: () => setState((s) => ({ asmMin: { ...s.asmMin, [l]: !s.asmMin[l] } })),
       })),
       asmDocs: ADOCS.map((d) => {
-        const done = !!state.asmDocs[d.k];
+        const done = !!asmDocs[d.k];
         return {
           k: d.k,
           label: d.label,
@@ -162,14 +162,14 @@ export function useAsmViewModel() {
         };
       }),
       asmSummary: [
-        { k: 'Site', v: state.asmForm.site || '—' },
+        { k: 'Site', v: asmForm.site || '—' },
         {
           k: 'Location',
-          v: [state.asmForm.region, state.asmForm.country].filter(Boolean).join(', ') || '—',
+          v: [asmForm.region, asmForm.country].filter(Boolean).join(', ') || '—',
         },
         { k: 'Minerals', v: pickedMinerals.join(', ') || '—' },
-        { k: 'Workers', v: String(state.asmForm.workers || 0) },
-        { k: 'GPS', v: state.asmGps ? 'Captured' : 'Not captured' },
+        { k: 'Workers', v: String(asmForm.workers || 0) },
+        { k: 'GPS', v: asmGps ? 'Captured' : 'Not captured' },
       ],
       asmSite: (e: React.ChangeEvent<HTMLInputElement>) =>
         setState((s) => ({ asmForm: { ...s.asmForm, site: e.target.value } })),
@@ -194,7 +194,7 @@ export function useAsmViewModel() {
         })),
       asmGpsToggle: () => setState((s) => ({ asmGps: !s.asmGps })),
       asmBack: () => {
-        const i = ASTEPS.indexOf(state.asmStep);
+        const i = ASTEPS.indexOf(asmStep);
         if (i <= 0) {
           go('mining');
           return;
@@ -203,11 +203,11 @@ export function useAsmViewModel() {
         requestAnimationFrame(() => window.scrollTo({ top: 0 }));
       },
       asmNext: () => {
-        const i = ASTEPS.indexOf(state.asmStep);
-        if (state.asmStep === 'site' && !siteOk) return;
-        if (state.asmStep === 'gps' && !state.asmGps) return;
-        if (state.asmStep === 'docs' && !docsDone) return;
-        if (state.asmStep === 'done') {
+        const i = ASTEPS.indexOf(asmStep);
+        if (asmStep === 'site' && !siteOk) return;
+        if (asmStep === 'gps' && !asmGps) return;
+        if (asmStep === 'docs' && !docsDone) return;
+        if (asmStep === 'done') {
           setState({ asmStep: 'elig' });
           go('mining');
           return;
@@ -217,12 +217,12 @@ export function useAsmViewModel() {
       },
     };
   }, [
-    state.asmStep,
-    state.asmElig,
-    state.asmMin,
-    state.asmDocs,
-    state.asmGps,
-    state.asmForm,
+    asmStep,
+    asmElig,
+    asmMin,
+    asmDocs,
+    asmGps,
+    asmForm,
     setState,
     go,
   ]);

@@ -1,5 +1,5 @@
 import { useMemo } from 'react';
-import { useAppState } from '@/hooks/useAppState';
+import { useSellState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
 import { CATS, PRODUCTS } from '@/constants/catalog';
 import { FIELD } from '@/constants/tokens';
@@ -34,12 +34,13 @@ const SELL_TITLES: Record<number, [string, string]> = {
 
 /** View model for the four-step "Sell a mineral" wizard. */
 export function useSellViewModel() {
-  const { state, setState, go } = useAppState();
+  const { sellStep, sellForm, setState, go } = useSellState();
+  const { authed } = useSessionState();
   const h = useActions();
 
   return useMemo(() => {
-    const ss = state.sellStep;
-    const sf = state.sellForm;
+    const ss = sellStep;
+    const sf = sellForm;
     const isOther = sf.mineral === '__other';
     const resolvedMineral = isOther ? sf.customMineral || '' : sf.mineral || '';
 
@@ -67,7 +68,7 @@ export function useSellViewModel() {
           ';',
         locked,
         go: () => {
-          if (s.n > state.sellStep) return;
+          if (s.n > sellStep) return;
           setState({ sellStep: s.n });
         },
       };
@@ -78,13 +79,13 @@ export function useSellViewModel() {
     const sFeeV = sGross * SELLER_FEE;
 
     const sellNext = () => {
-      const cur = state.sellStep;
+      const cur = sellStep;
       if (cur === 4) {
         setState({ sellStep: 1 });
         go('home');
         return;
       }
-      if (!state.authed) {
+      if (!authed) {
         setState({
           modal: {
             title: 'Sign in to continue',
@@ -231,5 +232,5 @@ export function useSellViewModel() {
       sfCountry: (e: React.ChangeEvent<HTMLInputElement>) =>
         setState((s) => ({ sellForm: { ...s.sellForm, country: e.target.value } })),
     };
-  }, [state.sellStep, state.sellForm, state.authed, setState, go, h]);
+  }, [sellStep, sellForm, authed, setState, go, h]);
 }
