@@ -1,0 +1,77 @@
+/*
+ * Responsive behaviour below the design's own breakpoints.
+ *
+ * The source design ships media queries at 1240px, 1100px and 1000px. Those
+ * live verbatim in `global.css`. The rules here continue that same ladder down
+ * to small phones, deriving tablet and mobile behaviour from the desktop
+ * layout without altering its visual identity: the same colours, type scale
+ * and components, re-flowed to fit.
+ */
+
+/*
+ * Once the design's own 1240px rule collapses `.v2-split` to a single `1fr`
+ * column, that track still refuses to shrink below its contents' min-content
+ * width (an `auto` minimum), which pushes wide panels past the viewport.
+ * Allowing the items to shrink is what lets the single column actually fit.
+ */
+@media (max-width: 1240px) {
+  .v2-split > * {
+    min-width: 0;
+  }
+}
+
+/* ---- tablet ---- */
+@media (max-width: 900px) {
+  .v2-g4 {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ---- large phone ---- */
+@media (max-width: 760px) {
+  .v2-hdr {
+    height: auto !important;
+    flex-wrap: wrap !important;
+    padding: 12px 18px !important;
+    gap: 12px !important;
+  }
+  .v2-nav {
+    order: 3;
+    width: 100%;
+    flex: 1 0 100% !important;
+  }
+  .v2-g4,
+  .v2-g3,
+  .v2-g2 {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ---- phone ---- */
+@media (max-width: 600px) {
+  .v2-g4,
+  .v2-g3,
+  .v2-g2,
+  .v2-split {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* ---- small phone ---- */
+@media (max-width: 520px) {
+  /*
+   * Form controls carry a browser default minimum width that stops the
+   * +/- stepper rows (quantity, bid, headcount) fitting on a 320px screen.
+   */
+  input,
+  select,
+  textarea {
+    min-width: 0;
+  }
+}
+
+@media (max-width: 380px) {
+  .v2-hdr {
+    padding: 10px 14px !important;
+  }
+}
