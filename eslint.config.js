@@ -21,6 +21,19 @@ export default tseslint.config(
       ...reactHooks.configs.recommended.rules,
       'react-refresh/only-export-components': ['warn', { allowConstantExport: true }],
       '@typescript-eslint/no-explicit-any': 'error',
+      // The `@/` alias is the only way to reach across folders (ARCHITECTURE.md
+      // §10). Without this the convention decays one `../../` at a time.
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['../../*'],
+              message: "Reach across folders with the '@/' alias, never '../../'.",
+            },
+          ],
+        },
+      ],
     },
   },
 );
