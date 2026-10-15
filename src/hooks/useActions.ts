@@ -22,8 +22,13 @@ export function useActions() {
       setState({ modal: { title, body, confirmLabel, confirm: closeModal } });
 
     /**
-     * Gate an action behind an *approved* KYC — a pending submission is not
-     * enough, matching the design's `requireKyc`.
+     * Prompt for an *approved* KYC before an action — a pending submission is
+     * not enough, matching the design's `requireKyc`.
+     *
+     * This is the prompt, never the gate (ARCHITECTURE.md §8). It decides what
+     * to show; it decides nothing about what is permitted. Every trading
+     * endpoint must re-check KYC server-side, because anyone can reach the
+     * network call without coming through here.
      */
     const requireKyc = (what: string, proceed: () => void, returnTo?: RouteKey) => {
       if (kycStatus === 'verified') {

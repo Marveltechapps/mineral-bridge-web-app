@@ -19,6 +19,12 @@ export interface RequestOptions {
   timeoutMs?: number;
   /** Extra headers, merged over the client's own. */
   headers?: Record<string, string>;
+  /**
+   * Passed straight to `fetch`. Needed only by `POST /auth/refresh`, which has
+   * to send the httpOnly refresh cookie; every other request is authorised by
+   * the `Authorization` header and should leave this unset.
+   */
+  credentials?: RequestCredentials;
 }
 
 /** The envelope every list endpoint returns. */

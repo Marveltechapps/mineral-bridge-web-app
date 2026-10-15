@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useSessionState } from '@/hooks/useAppState';
+import { signIn } from '@/lib/auth/session';
 import { FIELD } from '@/constants/tokens';
 import type { AuthMethod } from '@/types';
 
@@ -108,6 +109,12 @@ export function useAuthViewModel() {
       verifyOtp: () => {
         setState({ authVerifying: true });
         setTimeout(() => {
+          // Begins the session the rest of the application reads from. With no
+          // backend there is no credential, so this is a `demo` session and
+          // nothing is sent as a bearer token. When `POST /auth/otp` exists,
+          // pass its TokenResponse here and the session becomes authenticated
+          // with no other change needed.
+          signIn();
           setState((s) => {
             const base = {
               authed: true,

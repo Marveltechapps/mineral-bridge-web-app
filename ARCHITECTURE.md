@@ -60,8 +60,9 @@ Mineral_Bridge_Web_Final/
     │   └── layout/             Shell: Header, TradeNav, KycBanner, Footer
     │
     ├── lib/                    Framework-facing infrastructure
-    │   ├── api/                httpClient (the only `fetch`), ApiError, types
-    │   ├── auth/               [target] token storage, refresh, session (§8)
+    │   ├── api/                httpClient (the only `fetch`), ApiError, types,
+    │   │                       client.ts (the wired `http` services import)
+    │   ├── auth/               sessionStore (in-memory token), session (§8)
     │   └── queryClient.ts      TanStack Query configuration
     │
     ├── store/
@@ -439,26 +440,69 @@ Rule for new code: **new screens use primitives and `className`.** Inline
 
 ---
 
-## 8. Auth and KYC **[target — the security model does not exist]**
+## 8. Auth and KYC **[current — client plumbing built; nothing is enforced]**
 
-Today `state.authed` is a client boolean and `useActions.requireKyc` gates
-actions in the browser. **Browser gates are UX, not security.** Nothing here is
-enforced.
+The credential plumbing exists. **Enforcement does not, and cannot until there
+is a server.** `requireKyc` and every signed-out variant in the interface are
+UX, not security.
 
-The target model:
-
-| Piece | Where | Rule |
+| Piece | Where | State |
 |---|---|---|
-| Token storage | `lib/auth/` | Access token in memory; refresh token in an httpOnly cookie. Never `localStorage`. |
-| Header injection | `lib/api/httpClient` | Every request. One place. **The seam exists** (`config.getAccessToken`) and nothing is behind it. |
-| Refresh | `lib/api/httpClient` | **Not built.** On 401: refresh once, replay the request, then fail to the login overlay. One in-flight refresh shared by concurrent requests, or a screen with four queries fires four and invalidates its own new token. The contract is written in the file, at the point it goes. |
-| Session state | `store/slices/sessionSlice` | Derived from the token, never set by a UI handler. |
-| Route protection | `routes/AppRoutes.tsx` | A `<RequireAuth>` wrapper around the authenticated subtree. |
-| KYC gating | **server** | Every trading endpoint re-checks KYC. `requireKyc` stays, as the *prompt*, not the *gate*. |
+| Token storage | `lib/auth/sessionStore` | **Built.** Access token in a module variable, never `localStorage`, `sessionStorage` or a readable cookie. A page reload starts anonymous and recovers from the refresh cookie. |
+| Session facade | `lib/auth/session` | **Built.** `signIn`, `signOut`, `refreshSession`, `getAccessToken`, `subscribe`. The only module that changes the session. |
+| Header injection | `lib/api/httpClient` | **Built.** `Authorization: Bearer <token>` on every request, from `config.getAccessToken`. One place; no other file may read the token to set a header. |
+| Refresh on 401 | `lib/api/httpClient` | **Built.** Refresh once, replay the original request unchanged, and on failure surface the original 401. One in-flight refresh shared by concurrent callers. |
+| Session loss | `hooks/useSessionSync` | **Built.** When the session ends under the interface, `authed` drops and the login overlay opens with `pendingResume` set to the current screen. |
+| KYC gating | **server** | **Not built, and not buildable here.** Every trading endpoint must re-check KYC. `requireKyc` stays as the prompt, never the gate. |
+
+### 8.1 Session status, and why `demo` exists
+
+`Session.status` is `anonymous`, `demo` or `authenticated`. `demo` is the state
+the click-through sign-in flow produces today: the interface presents someone as
+signed in, but there is no server and therefore no credential.
+`getAccessToken()` returns `null` for it, so a placeholder can never be sent to
+a real server as though it were a credential. When `POST /auth/otp` exists, pass
+its `TokenResponse` to `signIn()` and the session becomes `authenticated` with
+no other change.
+
+### 8.2 Gating is by nav and by signed-out variant, not by redirect
+
+**There is deliberately no `<RequireAuth>` route wrapper.** An earlier draft of
+this document called for one; it was wrong for this design, and the app was
+right. The design gates in three ways, none of them a redirect:
+
+- `Header` omits the private nav entries (My Orders, the account chip) when
+  signed out, so there is no entry point to protect.
+- Action handlers — bidding, buying, selling — open the auth overlay and record
+  `pendingResume`, so the person resumes exactly where they were.
+- Screens that are reachable render a signed-out variant in place
+  (`AccountPage` and its `notAuthed` branch).
+
+Three things follow, and all three matter. Browsing stays open, which is what a
+marketplace wants. The pixel suite can visit all 22 routes unauthenticated,
+which a redirect would break. And the responsive audit keeps auditing the screen
+it names rather than silently auditing a redirect target.
+
+Signing in is still applied by `verifyOtp` in the one patch that also closes the
+overlay and routes onward, rather than being left to `useSessionSync`. Keeping
+it atomic guarantees no frame where the overlay has closed but the header has
+not caught up, which matters in an application verified pixel by pixel.
+`signIn()` is called there too, so the credential store stays the single source
+for anything making a request.
+
+### 8.3 What a backend has to bring
 
 Non-negotiable: **bidding, order creation, contract signing, LC presentation and
-payout changes must be authorised server-side.** The client decides what to show,
-never what is allowed.
+payout changes must be authorised server-side.** The client decides what to
+show, never what is allowed. Specifically:
+
+- `POST /auth/otp` returning `{ accessToken, expiresIn }`, and setting the
+  refresh token as an httpOnly, `Secure`, `SameSite=Strict` cookie.
+- `POST /auth/refresh` reading that cookie and rotating it.
+- `POST /auth/logout` clearing it, so `signOut()` ends the session server-side
+  as well as in the tab.
+- Every trading endpoint returning `403` with a machine-readable `code` when KYC
+  is not approved, so the interface can tell *not verified* from *forbidden*.
 
 ---
 
@@ -562,7 +606,7 @@ before any of the refactors in this document.
 1. ~~No data layer~~ — built, but no endpoint is wired and no screen fetches, §5
 2. ~~80-field god state in one context~~ — split into fifteen slices, §6
 3. Styling bypasses any style system — §7
-4. No real auth; KYC enforced client-side only — §8
+4. Auth plumbing built; **no server-side enforcement** of auth or KYC — §8
 5. No UI primitive layer; pages up to 521 lines — §3, §7
 6. Behavioural test coverage ~2.4% — §9
 7. ~~No git repository~~ — initialised; no deployment artifact yet, §11

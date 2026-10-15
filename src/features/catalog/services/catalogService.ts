@@ -10,7 +10,7 @@
  * the next step (§5.3) and waits on a backend; until then this file is the
  * contract that backend has to meet.
  */
-import { http } from '@/lib/api/httpClient';
+import { http } from '@/lib/api/client';
 import type { Paginated, QueryParams } from '@/lib/api/types';
 import type { CategoryKey, Product, SellerType, SortKey } from '@/types';
 

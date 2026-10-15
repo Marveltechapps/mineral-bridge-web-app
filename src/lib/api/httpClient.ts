@@ -11,25 +11,25 @@
  * Vite bakes in at build time; it is read per request so a test can stub it.
  *
  * ──────────────────────────────────────────────────────────────────────────────
- * AUTH SEAM (ARCHITECTURE.md §8) — deliberately not implemented: there is no
- * backend and no `lib/auth/` yet. Two hooks are reserved here, and this is the
- * only file that should ever grow them:
+ * AUTH (ARCHITECTURE.md §8). Both hooks are implemented, and this is the only
+ * file that may hold them:
  *
  *   1. `getAccessToken` — called before every request; when it returns a token
- *      the `Authorization: Bearer <token>` header is set. Wire it up from
- *      `lib/auth/` (access token in memory, never `localStorage`).
+ *      the `Authorization: Bearer <token>` header is set. Supplied by
+ *      `lib/auth/session`, which keeps the token in memory, never in
+ *      `localStorage`.
  *
- *   2. Refresh-on-401 — NOT built. The one place it belongs is marked
- *      `AUTH SEAM: refresh-on-401` inside `request()` below. The contract it
- *      must implement: on a 401, refresh once, replay the original request
- *      (same method, URL, body and signal), and if the refresh or the replay
- *      fails, reject with the 401 `ApiError` so the login overlay can open.
- *      A single in-flight refresh must be shared by concurrent requests, or a
- *      screen with four queries will fire four refreshes and invalidate its own
- *      new token.
+ *   2. `refreshSession` — on a 401, refresh once and replay the original
+ *      request (same method, path, query, body and signal); if the refresh or
+ *      the replay fails, the original 401 `ApiError` reaches the caller so the
+ *      login overlay can open. One in-flight refresh is shared between
+ *      concurrent callers, which `lib/auth/session` guarantees — otherwise a
+ *      screen with four queries fires four refreshes and each new token
+ *      invalidates the one before it. See `request()` at the bottom.
  *
  * Nothing else about auth belongs in this file, and no other file may read the
- * token to set a header of its own.
+ * token to set a header of its own. This module imports nothing from
+ * `lib/auth/`; the wiring happens in `lib/api/client`.
  * ──────────────────────────────────────────────────────────────────────────────
  */
 import {
@@ -52,6 +52,16 @@ export interface HttpClientConfig {
   fetchImpl?: typeof fetch;
   /** AUTH SEAM (§8): return the current access token, or `null` when signed out. */
   getAccessToken?: () => string | null | undefined;
+  /**
+   * AUTH SEAM (§8): exchange the refresh cookie for a new access token.
+   *
+   * Resolves `true` when the session was renewed, so the 401'd request is
+   * replayed once; `false` when the session is over, so the original 401
+   * reaches the caller. Must share one in-flight refresh between concurrent
+   * callers and must never reject. Leave unset to disable refresh entirely —
+   * a 401 is then an ordinary `ApiError`.
+   */
+  refreshSession?: () => Promise<boolean>;
 }
 
 export interface HttpClient {
@@ -169,7 +179,7 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
     return baseUrl;
   };
 
-  async function request<T>(method: Method, path: string, spec: RequestSpec): Promise<T> {
+  async function send<T>(method: Method, path: string, spec: RequestSpec): Promise<T> {
     const url = joinUrl(resolveBaseUrl(), path, spec.query);
     const fetchImpl = config.fetchImpl ?? globalThis.fetch;
     const timeoutMs = spec.timeoutMs ?? config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -198,6 +208,7 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
         headers,
         body: spec.hasBody ? JSON.stringify(spec.body) : undefined,
         signal: controller.signal,
+        ...(spec.credentials ? { credentials: spec.credentials } : {}),
       });
     } catch (error) {
       // The caller's cancellation is theirs: rethrow it unchanged so TanStack
@@ -223,9 +234,6 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
     }
 
     if (!response.ok) {
-      // AUTH SEAM: refresh-on-401 goes exactly here — see the file header for
-      // the contract it has to meet. Until `lib/auth/` exists, a 401 is an
-      // ordinary ApiError and the UI decides what to do with it.
       throw await errorFromResponse(response);
     }
 
@@ -241,6 +249,43 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
     }
   }
 
+  /**
+   * AUTH SEAM (§8): refresh-on-401, the one place it belongs.
+   *
+   * On a 401, ask `refreshSession()` once. If it renews the session, replay the
+   * request exactly as it was — same method, path, query, body and signal — so
+   * the caller never sees the interruption. If it does not, or the replay fails
+   * again, the original 401 is what reaches the caller, and the login overlay
+   * opens off the back of it.
+   *
+   * Only the first attempt may refresh: `send` is called directly for the
+   * replay, so a server answering 401 twice cannot start a loop.
+   */
+  async function request<T>(method: Method, path: string, spec: RequestSpec): Promise<T> {
+    if (!config.refreshSession) return send<T>(method, path, spec);
+
+    try {
+      return await send<T>(method, path, spec);
+    } catch (error) {
+      const isUnauthorised = error instanceof ApiError && error.status === 401;
+      // A cancelled request is the caller's decision, not an auth failure.
+      if (!isUnauthorised || spec.signal?.aborted) throw error;
+
+      const renewed = await config.refreshSession();
+      if (!renewed) throw error;
+
+      try {
+        return await send<T>(method, path, spec);
+      } catch (replayError) {
+        // Surface the replay's own failure when it is something new, but keep
+        // the original 401 when the answer is simply 401 again.
+        throw replayError instanceof ApiError && replayError.status === 401
+          ? error
+          : replayError;
+      }
+    }
+  }
+
   return {
     get: (path, options = {}) => request('GET', path, options),
     post: (path, body, options = {}) => request('POST', path, { ...options, body, hasBody: true }),
@@ -249,5 +294,6 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
   };
 }
 
-/** The application's client. Feature services import this and nothing else. */
-export const http = createHttpClient();
+// The application's wired client is `http` in `@/lib/api/client`, which is what
+// feature services import. It is created there, not here, so that this file
+// imports nothing from `lib/auth/` — see that file for why.

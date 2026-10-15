@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useAccountState, useKycState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
+import { signOut } from '@/lib/auth/session';
 import type { IconName } from '@/types';
 
 /** One row of the account panel. Exactly one `is*` flag is set. */
@@ -274,7 +275,12 @@ export function useAccountViewModel() {
             title: 'Log out?',
             body: 'You will need to sign in again to trade or manage your account.',
             confirmLabel: 'Log out',
-            confirm: () => setState({ authed: false, modal: null, route: 'home' }),
+            confirm: () => {
+              // Discards the credential as well as the interface flag — a token
+              // must never outlive the session it belongs to.
+              signOut();
+              setState({ authed: false, modal: null, route: 'home' });
+            },
           },
         }),
       confirmDelete: () =>
@@ -283,7 +289,10 @@ export function useAccountViewModel() {
             title: 'Delete account?',
             body: 'This permanently removes your profile, documents and payout methods. Open orders must settle first. This cannot be undone.',
             confirmLabel: 'Delete account',
-            confirm: () => setState({ authed: false, modal: null, route: 'home' }),
+            confirm: () => {
+              signOut();
+              setState({ authed: false, modal: null, route: 'home' });
+            },
           },
         }),
     };

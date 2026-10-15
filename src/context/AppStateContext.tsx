@@ -11,6 +11,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { initialState, type AppState } from '@/store/appState';
 import { ROUTE_PATHS, routeFromPath } from '@/constants/routes';
 import { SliceProviders } from '@/context/sliceContexts';
+import { useSessionSync } from '@/hooks/useSessionSync';
 import type { RouteKey } from '@/types';
 
 type StatePatch = Partial<AppState> | ((prev: AppState) => Partial<AppState>);
@@ -84,6 +85,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     intendedRoute.current = fromUrl;
     setRawState((prev) => (prev.route === fromUrl ? prev : { ...prev, route: fromUrl }));
   }, [location.pathname]);
+
+  // Ends the session in the interface when the actual session ends under it.
+  useSessionSync(setState);
 
   const actions = useMemo<AppActionsContextValue>(() => ({ setState, go }), [setState, go]);
 
