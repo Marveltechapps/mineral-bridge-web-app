@@ -4,6 +4,9 @@ import type { SortKey } from '@/types';
 export interface CatalogSlice {
   query: string;
   homeFilter: string;
+  subcategory: string;
+  mineralType: string;
+  productForm: string;
   gradeF: string;
   sellerF: string;
   sort: SortKey;
@@ -13,6 +16,9 @@ export interface CatalogSlice {
 export const catalogInitial: CatalogSlice = {
   query: '',
   homeFilter: 'all',
+  subcategory: '',
+  mineralType: '',
+  productForm: '',
   gradeF: '',
   sellerF: '',
   sort: 'featured',
@@ -22,6 +28,9 @@ export const catalogInitial: CatalogSlice = {
 export const CATALOG_KEYS = [
   'query',
   'homeFilter',
+  'subcategory',
+  'mineralType',
+  'productForm',
   'gradeF',
   'sellerF',
   'sort',

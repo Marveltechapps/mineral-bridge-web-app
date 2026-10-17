@@ -1,7 +1,13 @@
 import { useMemo } from 'react';
-import { useOrdersState } from '@/hooks/useAppState';
+import { useQuery } from '@tanstack/react-query';
+import { useOrdersState, useSessionState } from '@/hooks/useAppState';
+import { isApiConfigured } from '@/lib/api/config';
 import { ORDERS, isClosed } from '@/constants/orders';
 import { stageLabelFor } from '@/constants/catalog';
+import { listOrders } from '@/features/orders/services/ordersService';
+import type { Order } from '@/types';
+
+const EMPTY_ORDERS: Order[] = [];
 
 const oChip = (on: boolean) =>
   'padding:9px 18px; border-radius:10px; border:1px solid ' +
@@ -22,9 +28,18 @@ const oTab = (on: boolean) =>
 /** View model for the "My Orders" list, its side filters and status tabs. */
 export function useOrdersViewModel() {
   const { orderFilter, orderTab, setState, go } = useOrdersState();
+  const { authed } = useSessionState();
+  const api = isApiConfigured();
+  const ordersQuery = useQuery({
+    queryKey: ['orders'],
+    queryFn: ({ signal }) => listOrders(signal),
+    enabled: api && authed,
+  });
+  const orders = api ? (ordersQuery.data ?? EMPTY_ORDERS) : ORDERS;
+  const failed = api && ordersQuery.isError;
 
   return useMemo(() => {
-    const scoped = ORDERS.filter((o) =>
+    const scoped = orders.filter((o) =>
       orderTab === 'completed' ? isClosed(o) : !isClosed(o),
     );
 
@@ -66,8 +81,8 @@ export function useOrdersViewModel() {
       })),
       orderTabs: (
         [
-          { k: 'active', label: 'Active (' + ORDERS.filter((o) => !isClosed(o)).length + ')' },
-          { k: 'completed', label: 'Completed (' + ORDERS.filter(isClosed).length + ')' },
+          { k: 'active', label: 'Active (' + orders.filter((o) => !isClosed(o)).length + ')' },
+          { k: 'completed', label: 'Completed (' + orders.filter(isClosed).length + ')' },
         ] as const
       ).map((t) => ({
         k: t.k,
@@ -85,10 +100,12 @@ export function useOrdersViewModel() {
       ],
       orderRows,
       ordersEmpty: orderRows.length === 0,
-      ordersEmptyMsg:
-        orderTab === 'completed'
+      ordersEmptyMsg: failed
+        ? 'Orders could not be loaded.'
+        : orderTab === 'completed'
           ? 'No completed orders yet.'
           : 'No active orders right now.',
+      retryOrders: () => void ordersQuery.refetch(),
     };
-  }, [orderFilter, orderTab, setState, go]);
+  }, [orderFilter, orderTab, setState, go, orders, failed, ordersQuery]);
 }

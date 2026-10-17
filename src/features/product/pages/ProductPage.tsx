@@ -48,7 +48,7 @@ export function ProductPage() {
         <div>
           <div
             style={css(
-              'height:360px; border-radius:20px; background:' +
+              'height:360px; border-radius:20px; background-color:#eef1f6; background:' +
                 active.grad +
                 '; position:relative; overflow:hidden; box-shadow:0 16px 40px rgba(20,26,46,.16);',
             )}

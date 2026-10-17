@@ -1,7 +1,11 @@
 import { useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useProductState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
+import { isApiConfigured } from '@/lib/api/config';
 import { PRODUCTS } from '@/constants/catalog';
+import { catalogKeys, getLot, getLots } from '@/features/catalog/services/catalogService';
+import { createOrder, quoteOrder } from '@/features/orders/services/ordersService';
 import { passportId } from '@/features/passport/hooks/usePassportViewModel';
 import { money, num } from '@/utils/format';
 
@@ -14,13 +18,57 @@ const PAYS: [string, string, string, string][] = [
 ];
 
 /** View model for the lot detail screen: specs, provenance and the buy panel. */
+const BLANK: (typeof PRODUCTS)[number] = {
+  id: '',
+  name: '',
+  category: '',
+  catKey: '',
+  subCategory: '',
+  seller: '',
+  sellerType: 'Trader',
+  grade: '',
+  region: '',
+  price: '$0',
+  unit: 'g',
+  stock: '—',
+  grad: 'linear-gradient(140deg,#1e2a5a,#141a2e)',
+};
+
 export function useProductViewModel() {
   const { activeId, qty, payMethod, setState, go } = useProductState();
   const { authed } = useSessionState();
   const h = useActions();
+  const api = isApiConfigured();
+  const client = useQueryClient();
+  const lotsQuery = useQuery({
+    queryKey: catalogKeys.lots({ perPage: 100 }),
+    queryFn: ({ signal }) => getLots({ perPage: 100 }, signal),
+    enabled: api,
+  });
+  const detailQuery = useQuery({
+    queryKey: catalogKeys.lot(activeId || 'none'),
+    queryFn: ({ signal }) => getLot(activeId, signal),
+    enabled: api && Boolean(activeId),
+  });
+  const catalog = api ? (lotsQuery.data?.items ?? []) : PRODUCTS;
+  const selected = (api ? detailQuery.data : undefined) || catalog.find((p) => p.id === activeId) || (api ? BLANK : PRODUCTS[0]);
+  const unit = (['g', 'kg', 'oz', 'ct', 'MT'] as const).find((u) => u === selected.unit) ?? 'g';
+  const quoteQuery = useQuery({
+    queryKey: ['orders', 'quote', selected.id, qty, payMethod],
+    queryFn: ({ signal }) =>
+      quoteOrder(
+        {
+          lotId: selected.id,
+          quantity: { value: qty || 0, unit },
+          paymentMethod: (payMethod || 'escrow') as 'escrow' | 'wire' | 'lc' | 'btc',
+        },
+        signal,
+      ),
+    enabled: api && Boolean(selected.id) && (qty || 0) > 0,
+  });
 
   return useMemo(() => {
-    const ap = PRODUCTS.find((p) => p.id === activeId) || PRODUCTS[0];
+    const ap = selected;
 
     const active = {
       ...ap,
@@ -38,14 +86,19 @@ export function useProductViewModel() {
         { k: 'Test method', v: 'Fire assay + XRF' },
         { k: 'Documentation', v: 'CoA, provenance, export permit' },
       ],
-      desc: `${ap.name} sourced from ${ap.region}. Every lot is inspected on site by a Mineral Bridge agent, sampled, and independently lab-assayed before listing. Chain-of-custody documents and export permits are attached to the order and settlement is escrow-backed.`,
+      desc:
+        ('description' in ap && typeof ap.description === 'string' && ap.description) ||
+        (ap.name
+          ? `${ap.name} sourced from ${ap.region || 'the listed origin'}.`
+          : 'Select a mineral from the catalog.'),
     };
 
     const qtyN = qty || 0;
-    const sub = num(ap.price) * qtyN;
-    const fee = sub * 0.01;
+    const quoted = quoteQuery.data;
+    const sub = quoted ? quoted.subtotal.amount / 100 : api ? 0 : num(ap.price) * qtyN;
+    const fee = quoted ? quoted.platformFee.amount / 100 : api ? 0 : sub * 0.01;
 
-    const provEvents: [string, string, string, string][] = [
+    const provEvents: [string, string, string, string][] = api ? [] : [
       ['Extracted and registered', `${ap.region} · GPS-verified site`, '01 Oct 2026', '0x2f81…a913'],
       [
         'Sealed by agent',
@@ -116,8 +169,37 @@ export function useProductViewModel() {
           });
           return;
         }
-        h.requireKyc('complete a purchase', () => go('orders'), 'product');
+        h.requireKyc(
+          'complete a purchase',
+          () => {
+            if (!api || !ap.id) {
+              go('orders');
+              return;
+            }
+            void createOrder({
+              lotId: ap.id,
+              quantity: { value: qtyN || 1, unit },
+              paymentMethod: (payMethod || 'escrow') as 'escrow' | 'wire' | 'lc' | 'btc',
+              quoteId: quoted?.quoteId,
+            })
+              .then(() => {
+                void client.invalidateQueries({ queryKey: ['orders'] });
+                go('orders');
+              })
+              .catch((error: unknown) => {
+                setState({
+                  modal: {
+                    title: 'Order was not placed',
+                    body: error instanceof Error ? error.message : 'The order could not be saved.',
+                    confirmLabel: 'Close',
+                    confirm: () => setState({ modal: null }),
+                  },
+                });
+              });
+          },
+          'product',
+        );
       },
     };
-  }, [activeId, qty, payMethod, authed, setState, go, h]);
+  }, [qty, payMethod, authed, setState, go, h, selected, api, unit, client, quoteQuery.data]);
 }

@@ -5,6 +5,7 @@ export interface CatalogCardModel {
   id: string;
   name: string;
   category: string;
+  detail?: string;
   grade: string;
   region: string;
   seller: string;
@@ -29,7 +30,7 @@ export function CatalogCard({ product: p }: { product: CatalogCardModel }) {
         aria-label={`View ${p.name}`}
         style={css('border:none; padding:0; background:none; cursor:pointer; text-align:left;')}
       >
-        <div style={css('height:150px; background:' + p.grad + '; position:relative;')}>
+        <div style={css('height:180px; background:' + p.grad + '; position:relative; background-color:#eef1f6;')}>
           <span
             style={css(
               'position:absolute; top:12px; left:12px; background:rgba(255,255,255,.94); color:#141a2e; font-size:10px; font-weight:800; letter-spacing:.4px; padding:5px 10px; border-radius:8px;',
@@ -56,6 +57,7 @@ export function CatalogCard({ product: p }: { product: CatalogCardModel }) {
       </button>
       <div style={css('padding:16px 18px 18px; display:flex; flex-direction:column; flex:1;')}>
         <div style={css('font-size:16px; font-weight:800; color:#141a2e;')}>{p.name}</div>
+        {p.detail ? <div style={css('font-size:12.5px; color:#6b7290; margin-top:3px;')}>{p.detail}</div> : null}
         <div
           style={css(
             'display:flex; align-items:center; gap:6px; font-size:12.5px; color:#6b7290; margin-top:4px;',

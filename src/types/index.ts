@@ -31,7 +31,7 @@ export type RouteKey =
   | 'shipment'
   | 'asm';
 
-export type CategoryKey = 'precious' | 'gemstone' | 'industrial' | 'base' | 'energy';
+export type CategoryKey = string;
 
 export interface Category {
   key: CategoryKey;
@@ -49,6 +49,12 @@ export interface Product {
   category: string;
   catKey: CategoryKey;
   subCategory: string;
+  subcategorySlug?: string;
+  mineralType?: string;
+  mineralTypeSlug?: string;
+  productForm?: string;
+  productFormSlug?: string;
+  imageUrl?: string;
   seller: string;
   sellerType: SellerType;
   grade: string;
@@ -68,6 +74,8 @@ export type OrderSide = 'BUY' | 'SELL';
 
 export interface Order {
   id: string;
+  /** Server id used for follow-up calls. `id` stays the human reference. */
+  recordId?: string;
   mineral: string;
   side: OrderSide;
   qty: string;

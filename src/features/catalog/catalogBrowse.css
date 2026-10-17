@@ -1,0 +1,254 @@
+.mb-browse-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+.mb-browse-kicker {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: #8890ad;
+  margin: 0 0 6px;
+}
+
+.mb-browse-title {
+  font-family: 'Poppins', sans-serif;
+  font-size: 27px;
+  font-weight: 800;
+  color: #141a2e;
+  margin: 0;
+  letter-spacing: -0.5px;
+}
+
+.mb-browse-count {
+  font-size: 14px;
+  color: #6b7290;
+  margin: 6px 0 0;
+}
+
+.mb-browse-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #1d4fd7;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mb-browse-search {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  margin-bottom: 16px;
+  padding: 0 14px;
+  border: 1px solid #e2e5ec;
+  border-radius: 11px;
+  background: #fff;
+  max-width: 420px;
+}
+
+.mb-browse-search input {
+  flex: 1;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 13.5px;
+  color: #1a1f36;
+  min-width: 0;
+}
+
+.mb-cat-grid,
+.mb-item-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.mb-cat-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.mb-item-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.mb-cat,
+.mb-item,
+.mb-sub {
+  background: #fff;
+  border: 1px solid #e5e7ec;
+  border-radius: 13px;
+  box-shadow: 0 4px 14px rgba(20, 26, 46, 0.05);
+  text-align: left;
+  cursor: pointer;
+  padding: 0;
+  color: inherit;
+  font: inherit;
+  width: 100%;
+}
+
+.mb-cat,
+.mb-item {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #eef1f6;
+}
+
+.mb-frame {
+  width: 100%;
+  height: 180px;
+  background: #eef1f6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.mb-cat-image,
+.mb-item-image,
+.product-image {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  background: #eef1f6;
+  display: block;
+}
+
+.mb-cat-body,
+.mb-item-body {
+  padding: 12px 13px 14px;
+}
+
+.mb-cat-name,
+.mb-item-name,
+.mb-sub-name {
+  font-size: 14.5px;
+  font-weight: 700;
+  color: #1a1f36;
+}
+
+.mb-cat-meta,
+.mb-item-meta,
+.mb-sub-meta {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #8890ad;
+}
+
+.mb-item-price {
+  display: block;
+  margin-top: 8px;
+  font-family: 'Poppins', sans-serif;
+  font-size: 16px;
+  font-weight: 800;
+  color: #141a2e;
+}
+
+.mb-sub-list {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  max-width: 760px;
+}
+
+.mb-sub {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  padding: 12px;
+}
+
+.mb-sub-thumb {
+  width: 72px;
+  height: 72px;
+  border-radius: 11px;
+  object-fit: contain;
+  object-position: center;
+  background: #eef1f6;
+  flex: none;
+}
+
+.mb-sub-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.mb-sub-chevron {
+  color: #b9c0d6;
+  flex: none;
+}
+
+.mb-static {
+  cursor: default;
+}
+
+.mb-state {
+  background: #fff;
+  border: 1px solid #e7eaf3;
+  border-radius: 18px;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.mb-state h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: #141a2e;
+}
+
+.mb-state p {
+  margin: 7px 0 0;
+  font-size: 14px;
+  color: #6b7290;
+}
+
+.mb-state button {
+  height: 44px;
+  margin-top: 18px;
+  padding: 0 22px;
+  border: 1px solid #d5dbef;
+  border-radius: 11px;
+  background: #fff;
+  color: #1e2a5a;
+  font-size: 14px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+@media (max-width: 1100px) {
+  .mb-cat-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .mb-item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .mb-cat-grid,
+  .mb-item-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mb-browse-title {
+    font-size: 22px;
+  }
+}
+
+@media (max-width: 520px) {
+  .mb-cat-grid,
+  .mb-item-grid {
+    grid-template-columns: 1fr;
+  }
+}

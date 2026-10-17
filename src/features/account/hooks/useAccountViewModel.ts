@@ -1,6 +1,9 @@
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAccountState, useKycState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
+import { http } from '@/lib/api/client';
+import { isApiConfigured } from '@/lib/api/config';
 import { signOut } from '@/lib/auth/session';
 import type { IconName } from '@/types';
 
@@ -48,7 +51,27 @@ export function useAccountViewModel() {
   const { authed } = useSessionState();
   const { kycStatus } = useKycState();
   const h = useActions();
-
+  const api = isApiConfigured();
+  const payoutsQuery = useQuery({
+    queryKey: ['account', 'payouts'],
+    queryFn: ({ signal }) =>
+      http.get<{ items: Array<{ id: string; type: string; bankName: string | null; maskedAccount: string; label: string | null; verified: boolean; default: boolean }> }>(
+        '/account/payout-methods',
+        { signal },
+      ),
+    enabled: api && authed,
+  });
+  const documentsQuery = useQuery({
+    queryKey: ['account', 'documents'],
+    queryFn: ({ signal }) =>
+      http.get<{ items: Array<{ id: string; name: string; type: string; status: string }> }>('/account/documents', { signal }),
+    enabled: api && authed,
+  });
+  const sessionsQuery = useQuery({
+    queryKey: ['account', 'sessions'],
+    queryFn: ({ signal }) => http.get<{ items: Array<{ id: string }> }>('/auth/sessions', { signal }),
+    enabled: api && authed,
+  });
   return useMemo(() => {
     const sheet = (title: string, body: string, label?: string) =>
       setState({
@@ -143,30 +166,47 @@ export function useAccountViewModel() {
       ],
       documents: [
         'Documents & KYC',
-        [
-          act('Identity verification (KYC)', kycStatusSub, kycStatusCta, () => go('kyc')),
-          badge('Company registration', 'Certificate of incorporation', 'Pending'),
-          accDocSubmitted
-            ? badge('Mining licence', 'Submitted for compliance review', 'Pending')
-            : act('Mining licence', 'Required to sell as a licensed operation', 'Upload', () =>
+        api
+          ? [
+              act('Identity verification (KYC)', kycStatusSub, kycStatusCta, () => go('kyc')),
+              ...(documentsQuery.data?.items ?? []).map((doc) =>
+                badge(doc.name, doc.type.replace(/_/g, ' '), doc.status === 'verified' ? 'Verified' : doc.status === 'rejected' ? 'Rejected' : 'Pending'),
+              ),
+            ]
+          : [
+              act('Identity verification (KYC)', kycStatusSub, kycStatusCta, () => go('kyc')),
+              badge('Company registration', 'Certificate of incorporation', 'Pending'),
+              accDocSubmitted
+                ? badge('Mining licence', 'Submitted for compliance review', 'Pending')
+                : act('Mining licence', 'Required to sell as a licensed operation', 'Upload', () =>
+                    h.openAccEdit('doc'),
+                  ),
+              badge('Proof of address', 'Utility bill or bank statement', 'Verified'),
+              act('Tax certificate', 'Optional — speeds up settlement', 'Upload', () =>
                 h.openAccEdit('doc'),
               ),
-          badge('Proof of address', 'Utility bill or bank statement', 'Verified'),
-          act('Tax certificate', 'Optional — speeds up settlement', 'Upload', () =>
-            h.openAccEdit('doc'),
-          ),
-        ],
+            ],
         'Upload a document',
         false,
       ],
       payouts: [
         'Payout methods',
-        [
-          badge('Escrow wallet', 'Smart-contract secured · USDC', 'Primary'),
-          badge('Corporate bank · SWIFT', 'Standard Bank ···· 4471', 'Verified'),
-          act('Mobile money', 'Not added', 'Add', () => h.openAccEdit('payout')),
-          act('Crypto wallet', 'Not added', 'Add', () => h.openAccEdit('payout')),
-        ].concat(extraPayouts),
+        api
+          ? (payoutsQuery.data?.items.length
+              ? payoutsQuery.data.items.map((method) =>
+                  badge(
+                    method.label || method.bankName || method.type,
+                    method.maskedAccount,
+                    method.default ? 'Primary' : method.verified ? 'Verified' : 'Pending',
+                  ),
+                )
+              : [act('No payout method yet', 'Add a bank, mobile-money or crypto account', 'Add', () => h.openAccEdit('payout'))])
+          : [
+              badge('Escrow wallet', 'Smart-contract secured · USDC', 'Primary'),
+              badge('Corporate bank · SWIFT', 'Standard Bank ···· 4471', 'Verified'),
+              act('Mobile money', 'Not added', 'Add', () => h.openAccEdit('payout')),
+              act('Crypto wallet', 'Not added', 'Add', () => h.openAccEdit('payout')),
+            ].concat(extraPayouts),
         'Add payout method',
         false,
       ],
@@ -177,8 +217,15 @@ export function useAccountViewModel() {
           tog('bio', 'Biometric login', 'Face / fingerprint unlock'),
           tog('alerts', 'Login alerts', 'Notify on new device'),
           tog('ledger', 'Ledger visibility', 'Share verified trade history with buyers'),
-          act('Active sessions', '3 devices signed in', 'Manage', () => h.openAccEdit('sessions')),
-          act('Change password', 'Last changed 3 months ago', 'Change', () =>
+          act(
+            'Active sessions',
+            api
+              ? `${sessionsQuery.data?.items.length ?? 0} device${sessionsQuery.data?.items.length === 1 ? '' : 's'} signed in`
+              : '3 devices signed in',
+            'Manage',
+            () => h.openAccEdit('sessions'),
+          ),
+          act('Change password', api ? 'Update the password for this account' : 'Last changed 3 months ago', 'Change', () =>
             h.openAccEdit('password'),
           ),
         ],
@@ -199,7 +246,13 @@ export function useAccountViewModel() {
             ),
           ),
           act('Priority callback', 'Institutional accounts only', 'Request', () =>
-            sheet('Callback requested', 'Our desk will call you on +27 82 445 1120 within the hour.', 'Done'),
+            sheet(
+              'Callback requested',
+              api
+                ? 'Our desk will call the mobile number on your profile.'
+                : 'Our desk will call you on +27 82 445 1120 within the hour.',
+              'Done',
+            ),
           ),
           act('How it works', 'Buying, selling, assay and escrow explained', 'Watch', () =>
             go('howItWorks'),
@@ -276,8 +329,7 @@ export function useAccountViewModel() {
             body: 'You will need to sign in again to trade or manage your account.',
             confirmLabel: 'Log out',
             confirm: () => {
-              // Discards the credential as well as the interface flag — a token
-              // must never outlive the session it belongs to.
+              if (isApiConfigured()) void http.post('/auth/logout').catch(() => undefined);
               signOut();
               setState({ authed: false, modal: null, route: 'home' });
             },
@@ -290,6 +342,11 @@ export function useAccountViewModel() {
             body: 'This permanently removes your profile, documents and payout methods. Open orders must settle first. This cannot be undone.',
             confirmLabel: 'Delete account',
             confirm: () => {
+              if (isApiConfigured()) {
+                void http
+                  .delete('/auth/account', { body: { confirmation: 'DELETE' } })
+                  .catch(() => undefined);
+              }
               signOut();
               setState({ authed: false, modal: null, route: 'home' });
             },
@@ -308,5 +365,9 @@ export function useAccountViewModel() {
     setState,
     go,
     h,
+    api,
+    payoutsQuery.data,
+    documentsQuery.data,
+    sessionsQuery.data,
   ]);
 }

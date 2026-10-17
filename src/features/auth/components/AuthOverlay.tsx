@@ -170,6 +170,8 @@ export function AuthOverlay() {
                   className="v2-f3"
                   placeholder="you@company.com"
                   aria-label="Email address"
+                  value={vm.identifier}
+                  onChange={(e) => vm.setIdentifier(e.target.value)}
                   style={css(vm.inp)}
                 />
               ) : (
@@ -178,6 +180,8 @@ export function AuthOverlay() {
                   <input
                     placeholder="82 000 0000"
                     aria-label={vm.fieldLabel}
+                    value={vm.identifier}
+                    onChange={(e) => vm.setIdentifier(e.target.value)}
                     style={css(vm.inp + ' margin-bottom:0;')}
                   />
                 </div>
@@ -195,6 +199,11 @@ export function AuthOverlay() {
                   Keep me signed in on this device.
                 </span>
               </label>
+              {vm.authError ? (
+                <p role="alert" style={css('color:#9b2335; font-size:13px; margin:14px 0 0;')}>
+                  {vm.authError}
+                </p>
+              ) : null}
               <button
                 className="v2-btn v2-f5"
                 onClick={vm.sendOtp}
@@ -233,6 +242,8 @@ export function AuthOverlay() {
                 className="v2-f2"
                 placeholder="Your legal name"
                 aria-label="Full name"
+                value={vm.fullName}
+                onChange={(e) => vm.setFullName(e.target.value)}
                 style={css(vm.inp)}
               />
               <div className="v2-f3" style={css(vm.lbl)}>
@@ -256,6 +267,8 @@ export function AuthOverlay() {
                 <input
                   placeholder="82 000 0000"
                   aria-label="Mobile number"
+                  value={vm.phone}
+                  onChange={(e) => vm.setPhone(e.target.value)}
                   style={css(vm.inp + ' margin-bottom:0;')}
                 />
               </div>
@@ -266,6 +279,8 @@ export function AuthOverlay() {
                 className="v2-f4"
                 placeholder="you@company.com"
                 aria-label="Email address"
+                value={vm.email}
+                onChange={(e) => vm.setEmail(e.target.value)}
                 style={css(vm.inp)}
               />
               <label
@@ -282,6 +297,11 @@ export function AuthOverlay() {
                   <b style={css('color:#1e2a5a;')}>Privacy Policy</b>.
                 </span>
               </label>
+              {vm.authError ? (
+                <p role="alert" style={css('color:#9b2335; font-size:13px; margin:14px 0 0;')}>
+                  {vm.authError}
+                </p>
+              ) : null}
               <button
                 className="v2-btn v2-f5"
                 onClick={vm.sendOtp}
@@ -340,10 +360,17 @@ export function AuthOverlay() {
                 We sent a 4-digit code to {vm.target}.
               </p>
               <div style={css('display:flex; gap:13px; margin-top:24px;')}>
+                {vm.authError ? <p style={css('color:#9b2335; font-size:13px; margin:8px 0 0;')}>{vm.authError}</p> : null}
                 {vm.otpBoxes.map((b) => (
-                  <div key={b.i} className="v2-otp" style={css(b.style)}>
-                    {b.val}
-                  </div>
+                  <input
+                    key={b.i}
+                    className="v2-otp"
+                    aria-label={`Code digit ${b.i + 1}`}
+                    inputMode="numeric"
+                    value={b.val}
+                    onChange={(e) => b.onChange(e.target.value)}
+                    style={css(b.style)}
+                  />
                 ))}
               </div>
               {vm.verifying ? (
@@ -373,7 +400,18 @@ export function AuthOverlay() {
                       'text-align:center; font-size:13.5px; color:#6b7290; margin-top:18px;',
                     )}
                   >
-                    Didn&apos;t get it? <b style={css('color:#1e2a5a; cursor:pointer;')}>Resend</b> · 02:58
+                    Didn&apos;t get it?{' '}
+                    <button
+                      type="button"
+                      onClick={vm.resendOtp}
+                      disabled={vm.resendIn > 0}
+                      style={css(
+                        'background:none; border:none; padding:0; color:#1e2a5a; font-weight:800; cursor:pointer;',
+                      )}
+                    >
+                      Resend
+                    </button>{' '}
+                    · {vm.resendHint}
                   </div>
                 </>
               )}

@@ -40,31 +40,42 @@ describe('navigation', () => {
   });
 });
 
-describe('catalog filtering', () => {
-  it('narrows the lot list when a category filter is applied', async () => {
-    const { user } = renderApp('/buy');
-    expect(screen.getByText('8 assured lots · owned inventory, ready to ship')).toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /Gemstones/ }));
-    expect(screen.getByText('2 assured lots · owned inventory, ready to ship')).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Gemstones' })).toBeInTheDocument();
+describe('catalog navigation', () => {
+  it('starts on the categories and hides product forms', () => {
+    renderApp('/buy');
+    expect(screen.getByRole('heading', { name: 'Browse by category' })).toBeInTheDocument();
+    for (const name of ['Precious Metals', 'Gemstones', 'Industrial Minerals', 'Base & Alloy Metals', 'Energy & Strategic Minerals']) {
+      expect(screen.getByRole('button', { name: new RegExp(name) })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('button', { name: /Gold Concentrate/ })).not.toBeInTheDocument();
   });
 
-  it('shows the empty state and recovers via Reset filters', async () => {
+  it('opens one category’s subcategories, then only that subcategory’s forms', async () => {
     const { user } = renderApp('/buy');
-    await user.click(screen.getByRole('button', { name: /Gemstones/ }));
-    await user.click(screen.getByRole('button', { name: /Grade A/ }));
-    expect(screen.getByText('No lots match those filters')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Precious Metals/ }));
+    expect(screen.getByRole('heading', { name: 'Precious Metals' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Gold/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Silver/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Diamond/ })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Reset filters' }));
-    expect(screen.getByText('8 assured lots · owned inventory, ready to ship')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /^Gold/ }));
+    expect(screen.getByRole('heading', { name: 'Gold' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Gold Concentrate/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Silver Bullion/ })).not.toBeInTheDocument();
   });
 
-  it('reorders lots by price', async () => {
+  it('goes back a level and does not keep the previous subcategory’s forms', async () => {
     const { user } = renderApp('/buy');
-    await user.selectOptions(screen.getByLabelText('Sort lots'), 'low');
-    const headings = screen.getAllByText(/^(High-Purity Quartz|Gold Concentrate)$/);
-    expect(headings[0]).toHaveTextContent('High-Purity Quartz');
+    await user.click(screen.getByRole('button', { name: /Precious Metals/ }));
+    await user.click(screen.getByRole('button', { name: /^Gold/ }));
+    await user.click(screen.getByRole('button', { name: 'Subcategories' }));
+    expect(screen.queryByRole('button', { name: /Gold Concentrate/ })).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Categories' }));
+    await user.click(screen.getByRole('button', { name: /Gemstones/ }));
+    expect(screen.queryByRole('button', { name: /^Gold/ })).not.toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /Tanzanite/ }));
+    expect(screen.getByText('No product forms for this subcategory')).toBeInTheDocument();
   });
 });
 

@@ -1,6 +1,10 @@
 import { useMemo } from 'react';
-import { useAccountState } from '@/hooks/useAppState';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAccountState, useSessionState } from '@/hooks/useAppState';
 import { FIELD } from '@/constants/tokens';
+import { http } from '@/lib/api/client';
+import { isApiConfigured } from '@/lib/api/config';
+import { pickFile, uploadFile } from '@/lib/api/uploads';
 
 const pill2 = (on: boolean) =>
   'padding:11px 18px; border-radius:11px; border:1px solid ' +
@@ -59,6 +63,18 @@ export function useAccountEditViewModel() {
     setState,
     go,
   } = useAccountState();
+  const { authed } = useSessionState();
+  const api = isApiConfigured();
+  const client = useQueryClient();
+  const sessionsQuery = useQuery({
+    queryKey: ['account', 'sessions'],
+    queryFn: ({ signal }) =>
+      http.get<{ items: Array<{ id: string; device: string; location: string; lastActiveAt: string; isCurrent: boolean }> }>(
+        '/auth/sessions',
+        { signal },
+      ),
+    enabled: api && authed && accEditKind === 'sessions',
+  });
 
   return useMemo(() => {
     const ak = accEditKind;
@@ -77,7 +93,15 @@ export function useAccountEditViewModel() {
     const payIsCrypto = accPayType === 'Crypto wallet';
     const payIsBank = accPayType === 'Bank transfer';
 
-    const sessions = SESSION_DEFS.filter((s) => !accRevoked[s.id]);
+    const sessionSource = api
+      ? (sessionsQuery.data?.items ?? []).map((s) => ({
+          id: s.id,
+          device: s.device,
+          meta: `${s.location} · ${new Date(s.lastActiveAt).toLocaleString('en-GB', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}`,
+          current: s.isCurrent,
+        }))
+      : SESSION_DEFS;
+    const sessions = sessionSource.filter((s) => !accRevoked[s.id]);
 
     const saveOk =
       ak === 'profile'
@@ -152,7 +176,12 @@ export function useAccountEditViewModel() {
         meta: s.meta,
         current: s.current,
         other: !s.current,
-        revoke: () => setState((x) => ({ accRevoked: { ...x.accRevoked, [s.id]: true } })),
+        revoke: () => {
+          setState((x) => ({ accRevoked: { ...x.accRevoked, [s.id]: true } }));
+          if (api) {
+            void http.delete(`/auth/sessions/${encodeURIComponent(s.id)}`).then(() => client.invalidateQueries({ queryKey: ['account', 'sessions'] }));
+          }
+        },
       })),
       saveLabel: SAVE_LABELS[ak] || 'Save',
       saveBlocked: !saveOk,
@@ -192,11 +221,98 @@ export function useAccountEditViewModel() {
             confirm: () => setState({ modal: null }),
           },
         }),
-      accDocPick: () =>
-        setState({ accDocUploaded: true, accDocName: 'mining-licence-2026.pdf' }),
+      accDocPick: () => {
+        if (!api) {
+          setState({ accDocUploaded: true, accDocName: 'mining-licence-2026.pdf' });
+          return;
+        }
+        void pickFile('image/jpeg,image/png,image/webp,application/pdf').then(async (file) => {
+          if (!file) return;
+          try {
+            const fileId = await uploadFile(file, 'document');
+            await http.post('/account/documents', { name: file.name, kind: 'other', fileId });
+            setState({ accDocUploaded: true, accDocName: file.name });
+            await client.invalidateQueries({ queryKey: ['account', 'documents'] });
+          } catch (error: unknown) {
+            setState({
+              modal: {
+                title: 'Document was not uploaded',
+                body: error instanceof Error ? error.message : 'The document was rejected.',
+                confirmLabel: 'Close',
+                confirm: () => setState({ modal: null }),
+              },
+            });
+          }
+        });
+      },
       accSave: () => {
         const k = accEditKind;
-        // Commit the draft so the account screen reflects the new values.
+        const finish = (title: string, body: string) =>
+          setState({
+            modal: {
+              title,
+              body,
+              confirmLabel: 'Done',
+              confirm: () => {
+                setState({ modal: null });
+                go('account');
+              },
+            },
+          });
+        const fail = (error: unknown) =>
+          setState({
+            modal: {
+              title: 'Changes were not saved',
+              body: error instanceof Error ? error.message : 'The server rejected the update.',
+              confirmLabel: 'Close',
+              confirm: () => setState({ modal: null }),
+            },
+          });
+        if (api && k === 'profile') {
+          const country = accForm.country.trim();
+          void http
+            .patch('/account/profile', {
+              fullName: accForm.name,
+              email: accForm.email || null,
+              phone: accForm.mobile,
+              companyName: accForm.company || null,
+              ...(country.length === 2 ? { countryCode: country.toUpperCase() } : {}),
+            })
+            .then(() => {
+              setState({ accSaved: { ...accForm } });
+              finish('Profile updated', 'Your account details have been saved.');
+            })
+            .catch(fail);
+          return;
+        }
+        if (api && k === 'payout') {
+          const kind = accPayType === 'Mobile money' ? 'mobile_money' : accPayType === 'Crypto wallet' ? 'btc' : 'bank';
+          void http
+            .post('/account/payout-methods', {
+              kind,
+              accountNumber: accForm.payAccount,
+              accountName: accForm.name || 'Account holder',
+              bankName: accForm.payBank || undefined,
+              currency: 'USD',
+              makeDefault: accForm.payDefault,
+            })
+            .then(() => {
+              void client.invalidateQueries({ queryKey: ['account', 'payouts'] });
+              finish('Payout method linked', 'It is saved on your account.');
+            })
+            .catch(fail);
+          return;
+        }
+        if (api && k === 'password') {
+          void http
+            .post('/auth/password/change', { newPassword: accForm.pw })
+            .then(() => {
+              setState({ accForm: { ...accForm, pw: '' } });
+              finish('Password updated', 'Use your new password the next time you sign in.');
+            })
+            .catch(fail);
+          return;
+        }
         if (k === 'profile') setState({ accSaved: { ...accForm } });
         if (k === 'doc') setState({ accDocSubmitted: true });
         if (k === 'payout')
@@ -245,5 +361,8 @@ export function useAccountEditViewModel() {
     accRevoked,
     setState,
     go,
+    api,
+    client,
+    sessionsQuery.data,
   ]);
 }

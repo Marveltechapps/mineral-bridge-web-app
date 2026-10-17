@@ -1,6 +1,12 @@
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useAcademyState } from '@/hooks/useAppState';
+import { isApiConfigured } from '@/lib/api/config';
+import { http } from '@/lib/api/client';
 import { COURSES, LESSON_TITLES } from '@/constants/courses';
+import type { Course } from '@/types';
+
+const EMPTY_COURSES: Course[] = [];
 
 const acChip = (on: boolean) =>
   'padding:9px 20px; border-radius:10px; border:1px solid ' +
@@ -12,12 +18,52 @@ const acChip = (on: boolean) =>
   '; font-size:13px; font-weight:700; cursor:pointer;';
 
 /** View model for the ASM Academy listing and a single course. */
+const BLANK_COURSE: Course = {
+  id: '',
+  track: 'asm',
+  title: '',
+  sub: '',
+  level: '',
+  lessons: 1,
+  duration: '',
+  done: 0,
+  certified: false,
+  ic: 'shield',
+  grad: 'linear-gradient(140deg,#1e2a5a,#141a2e)',
+};
+
 export function useAcademyViewModel() {
   const { acTrack, courseId, lessonIdx, lessonDone, playing, setState, go } = useAcademyState();
+  const api = isApiConfigured();
+  const coursesQuery = useQuery({
+    queryKey: ['academy', 'courses'],
+    queryFn: async ({ signal }) => {
+      const page = await http.get<{
+        items: Array<{ id: string; title: string; summary?: string | null; level?: string; lessons?: number; durationSec?: number; progress?: { completedLessons?: number; percent?: number }; imageUrl?: string | null }>;
+      }>('/academy/courses', { signal });
+      return page.items.map((course): Course => ({
+        id: course.id,
+        track: acTrack,
+        title: course.title,
+        sub: course.summary || '',
+        level: course.level || '',
+        lessons: course.lessons || course.progress?.completedLessons || 0,
+        duration: course.durationSec ? `${Math.round(course.durationSec / 60)} min` : '',
+        done: course.progress?.completedLessons || 0,
+        certified: false,
+        ic: 'shield',
+        grad: course.imageUrl
+          ? `url("${course.imageUrl}") center/cover, linear-gradient(140deg,#1e2a5a,#141a2e)`
+          : 'linear-gradient(140deg,#1e2a5a,#141a2e)',
+      }));
+    },
+    enabled: api,
+  });
+  const source = api ? (coursesQuery.data ?? EMPTY_COURSES) : COURSES;
 
   return useMemo(() => {
-    const courses = COURSES.filter((c) => c.track === acTrack).map((c) => {
-      const pct = Math.round((c.done / c.lessons) * 100);
+    const courses = source.filter((c) => api || c.track === acTrack).map((c) => {
+      const pct = c.lessons ? Math.round((c.done / c.lessons) * 100) : 0;
       return {
         ...c,
         progress: pct + '%',
@@ -35,9 +81,9 @@ export function useAcademyViewModel() {
       };
     });
 
-    const cc = COURSES.find((c) => c.id === courseId) || COURSES[0];
+    const cc = source.find((c) => c.id === courseId) || (api ? BLANK_COURSE : COURSES[0]);
     const ccDone = lessonDone[cc.id] != null ? lessonDone[cc.id] : cc.done;
-    const ccPct = Math.round((ccDone / cc.lessons) * 100);
+    const ccPct = cc.lessons ? Math.round((ccDone / cc.lessons) * 100) : 0;
 
     const course = {
       ...cc,
@@ -90,11 +136,17 @@ export function useAcademyViewModel() {
         style: acChip(acTrack === t.k),
         select: () => setState({ acTrack: t.k }),
       })),
-      academyStats: [
-        { value: '12', label: 'Free courses' },
-        { value: '4,800+', label: 'Miners certified' },
-        { value: '6', label: 'Languages' },
-      ],
+      academyStats: api
+        ? [
+            { value: String(source.length), label: 'Published courses' },
+            { value: '0', label: 'Miners certified' },
+            { value: '—', label: 'Languages' },
+          ]
+        : [
+            { value: '12', label: 'Free courses' },
+            { value: '4,800+', label: 'Miners certified' },
+            { value: '6', label: 'Languages' },
+          ],
       courses,
       course,
       playing: playing,
@@ -103,7 +155,7 @@ export function useAcademyViewModel() {
       togglePlay: () => setState((s) => ({ playing: !s.playing })),
       completeLesson: () =>
         setState((s) => {
-          const c = COURSES.find((x) => x.id === s.courseId) || COURSES[0];
+          const c = source.find((x) => x.id === s.courseId) || (api ? BLANK_COURSE : COURSES[0]);
           const cur = s.lessonDone[c.id] != null ? s.lessonDone[c.id] : c.done;
           const next = Math.min(c.lessons, Math.max(cur, s.lessonIdx + 1));
           return {
@@ -130,5 +182,7 @@ export function useAcademyViewModel() {
     playing,
     setState,
     go,
+    source,
+    api,
   ]);
 }

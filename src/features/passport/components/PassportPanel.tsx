@@ -52,14 +52,16 @@ export function PassportPanel() {
               Verify
             </button>
           </div>
-          <button
-            onClick={passport.tryDemo}
-            style={css(
-              'background:none; border:none; padding:0; margin-top:11px; font-size:12.5px; font-weight:700; color:#1e2a5a; cursor:pointer; text-decoration:underline;',
-            )}
-          >
-            Try MBP-2026-0419-AU
-          </button>
+          {passport.showDemo && (
+            <button
+              onClick={passport.tryDemo}
+              style={css(
+                'background:none; border:none; padding:0; margin-top:11px; font-size:12.5px; font-weight:700; color:#1e2a5a; cursor:pointer; text-decoration:underline;',
+              )}
+            >
+              Try MBP-2026-0419-AU
+            </button>
+          )}
         </div>
 
         <div

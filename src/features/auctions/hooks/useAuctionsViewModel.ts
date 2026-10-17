@@ -1,10 +1,15 @@
 import { useMemo } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuctionsState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
+import { isApiConfigured } from '@/lib/api/config';
 import { AUCS } from '@/constants/auctions';
 import { FIELD } from '@/constants/tokens';
+import { listAuctions, placeBid } from '@/features/auctions/services/auctionsService';
 import { money } from '@/utils/format';
-import type { AuctionState } from '@/types';
+import type { Auction, AuctionState } from '@/types';
+
+const EMPTY_AUCTIONS: Auction[] = [];
 
 const aucChip = (on: boolean) =>
   'padding:9px 20px; border-radius:10px; border:1px solid ' +
@@ -39,13 +44,36 @@ const flagFor = (s: AuctionState) => {
 };
 
 /** View model for the auction list and the auction detail screen. */
+const BLANK_AUCTION: Auction = {
+  id: '',
+  name: '',
+  state: 'ended',
+  qty: '',
+  grade: '',
+  origin: '',
+  bidNum: 0,
+  yourBidNum: 0,
+  unit: '',
+  increment: '',
+  timeLabel: '',
+  grad: 'linear-gradient(140deg,#1e2a5a,#141a2e)',
+};
+
 export function useAuctionsViewModel() {
   const { aucTab, aucId, bidValue, outbidDismissed, setState, go } = useAuctionsState();
   const { authed } = useSessionState();
   const h = useActions();
+  const api = isApiConfigured();
+  const client = useQueryClient();
+  const auctionsQuery = useQuery({
+    queryKey: ['auctions'],
+    queryFn: ({ signal }) => listAuctions(signal),
+    enabled: api,
+  });
+  const auctions = api ? (auctionsQuery.data ?? EMPTY_AUCTIONS) : AUCS;
 
   return useMemo(() => {
-    const aucList = AUCS.filter((a) => a.state === aucTab).map((a) => {
+    const aucList = auctions.filter((a) => a.state === aucTab).map((a) => {
       const won = a.state === 'ended' && a.yourBidNum > 0 && a.yourBidNum >= a.bidNum;
       return {
         ...a,
@@ -71,7 +99,7 @@ export function useAuctionsViewModel() {
       };
     });
 
-    const av = AUCS.find((a) => a.id === aucId) || AUCS[0];
+    const av = auctions.find((a) => a.id === aucId) || (api ? BLANK_AUCTION : AUCS[0]);
     const avWon = av.state === 'ended' && av.yourBidNum > 0 && av.yourBidNum >= av.bidNum;
 
     const auc = {
@@ -110,7 +138,9 @@ export function useAuctionsViewModel() {
         { k: 'Minimum increment', v: av.increment },
         { k: 'Settlement', v: 'Escrow · 48h after close' },
       ],
-      bids: [
+      bids: api
+        ? []
+        : [
         {
           who: 'Bidder #4471',
           initials: 'B4',
@@ -150,7 +180,7 @@ export function useAuctionsViewModel() {
       ],
     };
 
-    const outbidLot = AUCS.find(
+    const outbidLot = auctions.find(
       (a) => a.state === 'live' && a.yourBidNum > 0 && a.yourBidNum < a.bidNum,
     );
 
@@ -200,15 +230,41 @@ export function useAuctionsViewModel() {
         }
         h.requireKyc(
           'place a bid',
-          () =>
-            setState({
-              modal: {
-                title: 'Bid placed',
-                body: 'Your bid has been recorded. We will alert you if you are outbid before the lot closes.',
-                confirmLabel: 'Done',
-                confirm: () => setState({ modal: null }),
-              },
-            }),
+          () => {
+            if (!api || !av.id) {
+              setState({
+                modal: {
+                  title: 'Bid placed',
+                  body: 'Your bid has been recorded. We will alert you if you are outbid before the lot closes.',
+                  confirmLabel: 'Done',
+                  confirm: () => setState({ modal: null }),
+                },
+              });
+              return;
+            }
+            void placeBid(av.id, Math.round((bidValue || 0) * 100))
+              .then(() => {
+                void client.invalidateQueries({ queryKey: ['auctions'] });
+                setState({
+                  modal: {
+                    title: 'Bid placed',
+                    body: 'Your bid has been recorded. We will alert you if you are outbid before the lot closes.',
+                    confirmLabel: 'Done',
+                    confirm: () => setState({ modal: null }),
+                  },
+                });
+              })
+              .catch((error: unknown) => {
+                setState({
+                  modal: {
+                    title: 'Bid was not accepted',
+                    body: error instanceof Error ? error.message : 'The bid could not be saved.',
+                    confirmLabel: 'Close',
+                    confirm: () => setState({ modal: null }),
+                  },
+                });
+              });
+          },
           'auctionDetail',
         );
       },
@@ -240,5 +296,8 @@ export function useAuctionsViewModel() {
     setState,
     go,
     h,
+    api,
+    auctions,
+    client,
   ]);
 }

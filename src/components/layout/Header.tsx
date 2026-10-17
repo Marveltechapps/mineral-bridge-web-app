@@ -1,5 +1,8 @@
-import { useCatalogState, useNavigationState, useSessionState } from '@/hooks/useAppState';
+import { useQuery } from '@tanstack/react-query';
+import { useAccountState, useCatalogState, useNavigationState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
+import { http } from '@/lib/api/client';
+import { isApiConfigured } from '@/lib/api/config';
 import { css } from '@/utils/css';
 import logo from '@/assets/images/mb-logo.png';
 import type { RouteKey } from '@/types';
@@ -21,6 +24,22 @@ const BASE_NAV: { id: RouteKey; label: string; r: RouteKey }[] = [
 /** Sticky top bar: brand, primary navigation, search and the account cluster. */
 export function Header() {
   const { authed } = useSessionState();
+  const { accForm } = useAccountState();
+  const displayName = (accForm.name || 'Account').split(' ')[0];
+  const nameParts = (accForm.name || '').trim().split(/\s+/).filter(Boolean);
+  const initials =
+    nameParts.length === 0
+      ? 'MB'
+      : nameParts.length === 1
+        ? nameParts[0].slice(0, 2).toUpperCase()
+        : `${nameParts[0][0]}${nameParts[nameParts.length - 1][0]}`.toUpperCase();
+  const api = isApiConfigured();
+  const notesQuery = useQuery({
+    queryKey: ['notifications', 'count'],
+    queryFn: ({ signal }) => http.get<{ unreadCount: number }>('/notifications', { query: { perPage: 1 }, signal }),
+    enabled: api && authed,
+  });
+  const unread = api ? (notesQuery.data?.unreadCount ?? 0) : 2;
   const { query } = useCatalogState();
   const { route, go } = useNavigationState();
   const h = useActions();
@@ -84,7 +103,7 @@ export function Header() {
             <button
               key={n.id}
               className="v2-top"
-              onClick={() => go(n.r)}
+              onClick={() => (n.r === 'buy' ? h.goBuy() : go(n.r))}
               aria-current={route === n.id ? 'page' : undefined}
               style={css(route === n.id ? NAV_ON : NAV_BASE)}
             >
@@ -133,7 +152,7 @@ export function Header() {
             <>
               <button
                 onClick={h.goOrders}
-                aria-label="My orders — 2 notifications"
+                aria-label={`My orders — ${unread} notifications`}
                 style={css(
                   'position:relative; width:42px; height:42px; border-radius:11px; border:1px solid #2b3352; background:#1b2237; color:#dfe4f2; display:flex; align-items:center; justify-content:center; cursor:pointer;',
                 )}
@@ -152,13 +171,15 @@ export function Header() {
                   <path d="M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9"></path>
                   <path d="M13.7 21a2 2 0 0 1-3.4 0"></path>
                 </svg>
-                <span
-                  style={css(
-                    'position:absolute; top:-5px; right:-5px; background:#e0245e; color:#fff; font-size:10px; font-weight:800; min-width:18px; height:18px; border-radius:9px; display:flex; align-items:center; justify-content:center; border:2px solid #141a2e; padding:0 4px;',
-                  )}
-                >
-                  2
-                </span>
+                {unread > 0 && (
+                  <span
+                    style={css(
+                      'position:absolute; top:-5px; right:-5px; background:#e0245e; color:#fff; font-size:10px; font-weight:800; min-width:18px; height:18px; border-radius:9px; display:flex; align-items:center; justify-content:center; border:2px solid #141a2e; padding:0 4px;',
+                    )}
+                  >
+                    {unread}
+                  </span>
+                )}
               </button>
               <button
                 onClick={h.goAccount}
@@ -171,9 +192,9 @@ export function Header() {
                     "width:32px; height:32px; border-radius:16px; background:linear-gradient(135deg,#f0a04b,#c8962f); color:#fff; font-family:'Poppins'; font-size:12.5px; font-weight:700; display:flex; align-items:center; justify-content:center;",
                   )}
                 >
-                  MT
+                  {initials}
                 </span>
-                <span style={css('font-size:13px; font-weight:700; color:#fff;')}>Marvel</span>
+                <span style={css('font-size:13px; font-weight:700; color:#fff;')}>{displayName}</span>
               </button>
             </>
           ) : (

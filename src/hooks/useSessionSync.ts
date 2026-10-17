@@ -1,5 +1,7 @@
 import { useEffect } from 'react';
-import { getSession, isSignedIn, subscribe } from '@/lib/auth/session';
+import { http } from '@/lib/api/client';
+import { isApiConfigured } from '@/lib/api/config';
+import { getSession, isSignedIn, restoreSession, subscribe } from '@/lib/auth/session';
 import type { AppState } from '@/store/appState';
 
 type StatePatch = Partial<AppState> | ((prev: AppState) => Partial<AppState>);
@@ -29,6 +31,39 @@ type StatePatch = Partial<AppState> | ((prev: AppState) => Partial<AppState>);
  * source for anything making a request.
  */
 export function useSessionSync(setState: (patch: StatePatch) => void): void {
+  useEffect(() => {
+    if (!isApiConfigured()) return;
+    let cancelled = false;
+    void restoreSession().then(async (ok) => {
+      if (cancelled || !ok) return;
+      try {
+        const me = await http.get<{
+          kycStatus?: 'unverified' | 'pending' | 'verified' | 'rejected';
+          user?: { fullName?: string; email?: string; mobile?: string; countryName?: string; companyName?: string | null };
+        }>('/auth/me');
+        if (cancelled) return;
+        const kycStatus = me.kycStatus === 'pending' || me.kycStatus === 'verified' ? me.kycStatus : 'unverified';
+        setState((previous) => ({
+          authed: true,
+          kycStatus,
+          accForm: {
+            ...previous.accForm,
+            name: me.user?.fullName || previous.accForm.name,
+            email: me.user?.email || previous.accForm.email,
+            mobile: me.user?.mobile || previous.accForm.mobile,
+            country: me.user?.countryName || previous.accForm.country,
+            company: me.user?.companyName || previous.accForm.company,
+          },
+        }));
+      } catch {
+        if (!cancelled) setState({ authed: true });
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [setState]);
+
   useEffect(
     () =>
       subscribe(() => {

@@ -14,7 +14,7 @@ export const AUCS: Auction[] = [
     unit: 'USD',
     increment: '$500',
     timeLabel: 'Ends in 02:14:38',
-    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Native%20gold%20nuggets.jpg?width=1200") center/cover, linear-gradient(140deg,#f3d27a,#b8860b)',
+    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Native%20gold%20nuggets.jpg?width=1200") center / contain no-repeat, #eef1f6',
   },
   {
     id: 'a2',
@@ -28,7 +28,7 @@ export const AUCS: Auction[] = [
     unit: 'USD',
     increment: '$250',
     timeLabel: 'Ends in 05:41:02',
-    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Smaragd.jpg?width=1200") center/cover, linear-gradient(140deg,#3fb984,#0a5c3a)',
+    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Smaragd.jpg?width=1200") center / contain no-repeat, #eef1f6',
   },
   {
     id: 'a3',
@@ -42,7 +42,7 @@ export const AUCS: Auction[] = [
     unit: 'USD',
     increment: '$1,000',
     timeLabel: 'Opens in 1 day 04:00',
-    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/NatCopper.jpg?width=1200") center/cover, linear-gradient(140deg,#d98a4e,#8a4a1e)',
+    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/NatCopper.jpg?width=1200") center / contain no-repeat, #eef1f6',
   },
   {
     id: 'a4',
@@ -56,7 +56,7 @@ export const AUCS: Auction[] = [
     unit: 'USD',
     increment: '$250',
     timeLabel: 'Closed 2 days ago',
-    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Platinum-nugget.jpg?width=1200") center/cover, linear-gradient(140deg,#d9dee4,#9aa6b2)',
+    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Platinum-nugget.jpg?width=1200") center / contain no-repeat, #eef1f6',
   },
   {
     id: 'a5',
@@ -70,6 +70,6 @@ export const AUCS: Auction[] = [
     unit: 'USD',
     increment: '$2,000',
     timeLabel: 'Closed 5 days ago',
-    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Amity%20Diamonds%20diamante%20Uncut-En-Bruto.jpg?width=1200") center/cover, linear-gradient(140deg,#bfe3ff,#3a5f8a)',
+    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Amity%20Diamonds%20diamante%20Uncut-En-Bruto.jpg?width=1200") center / contain no-repeat, #eef1f6',
   },
 ];

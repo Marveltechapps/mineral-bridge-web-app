@@ -1,3 +1,4 @@
+import { isApiConfigured } from '@/lib/api/config';
 import type { AccountForm, PayoutMethod } from '@/types';
 
 /** Profile, documents, payout methods and security settings. */
@@ -21,11 +22,11 @@ export const accountInitial: AccountSlice = {
   accountTab: 'profile',
   accEditKind: 'profile',
   accForm: {
-    name: 'Marvel Tech',
-    email: 'marvel@company.com',
-    mobile: '+27 82 445 1120',
-    country: 'South Africa',
-    company: 'Marvel Trading Co.',
+    name: isApiConfigured() ? '' : 'Marvel Tech',
+    email: isApiConfigured() ? '' : 'marvel@company.com',
+    mobile: isApiConfigured() ? '' : '+27 82 445 1120',
+    country: isApiConfigured() ? '' : 'South Africa',
+    company: isApiConfigured() ? '' : 'Marvel Trading Co.',
     role: 'Buyer',
     docRef: '',
     docExp: '',

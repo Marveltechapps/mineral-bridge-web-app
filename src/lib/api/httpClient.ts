@@ -68,7 +68,7 @@ export interface HttpClient {
   get<T>(path: string, options?: RequestOptions): Promise<T>;
   post<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
   patch<T>(path: string, body?: unknown, options?: RequestOptions): Promise<T>;
-  delete<T>(path: string, options?: RequestOptions): Promise<T>;
+  delete<T>(path: string, options?: RequestOptions & { body?: unknown }): Promise<T>;
 }
 
 type Method = 'GET' | 'POST' | 'PATCH' | 'DELETE';
@@ -184,7 +184,11 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
     const fetchImpl = config.fetchImpl ?? globalThis.fetch;
     const timeoutMs = spec.timeoutMs ?? config.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
-    const headers: Record<string, string> = { Accept: 'application/json' };
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'X-Client': 'mineralbridge-web/1.0',
+      'X-Requested-With': 'mb-web',
+    };
     if (spec.hasBody) headers['Content-Type'] = 'application/json';
     // AUTH SEAM (§8): the one place a request gets its credentials.
     const token = config.getAccessToken?.();
@@ -208,7 +212,7 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
         headers,
         body: spec.hasBody ? JSON.stringify(spec.body) : undefined,
         signal: controller.signal,
-        ...(spec.credentials ? { credentials: spec.credentials } : {}),
+        credentials: spec.credentials ?? 'include',
       });
     } catch (error) {
       // The caller's cancellation is theirs: rethrow it unchanged so TanStack
@@ -290,7 +294,12 @@ export function createHttpClient(config: HttpClientConfig = {}): HttpClient {
     get: (path, options = {}) => request('GET', path, options),
     post: (path, body, options = {}) => request('POST', path, { ...options, body, hasBody: true }),
     patch: (path, body, options = {}) => request('PATCH', path, { ...options, body, hasBody: true }),
-    delete: (path, options = {}) => request('DELETE', path, options),
+    delete: (path, options = {}) =>
+      request('DELETE', path, {
+        ...options,
+        body: options.body,
+        hasBody: options.body !== undefined,
+      }),
   };
 }
 

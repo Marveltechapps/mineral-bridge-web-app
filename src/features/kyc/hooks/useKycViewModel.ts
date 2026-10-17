@@ -1,6 +1,26 @@
-import { useMemo } from 'react';
-import { useKycState } from '@/hooks/useAppState';
-import type { IconName, KycStage, RouteKey } from '@/types';
+import { useEffect, useMemo, useRef } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useAccountState, useKycState, useSessionState } from '@/hooks/useAppState';
+import { isApiConfigured } from '@/lib/api/config';
+import { http } from '@/lib/api/client';
+import { pickFile, uploadFile } from '@/lib/api/uploads';
+import type { IconName, KycStage, KycStatus, RouteKey } from '@/types';
+
+const CAPTURE_SIDE: Record<string, 'front' | 'back' | 'photo_page'> = {
+  Front: 'front',
+  Back: 'back',
+  'Photo page': 'photo_page',
+};
+const SIDE_LABEL: Record<string, string> = { front: 'Front', back: 'Back', photo_page: 'Photo page' };
+
+interface WebKyc {
+  status: KycStatus | 'none';
+  stage: KycStage;
+  idType: string | null;
+  reference: string | null;
+  captures: Array<{ side: string }>;
+  selfie: { fileId: string } | null;
+}
 
 const KSTAGES: KycStage[] = ['why', 'type', 'capture', 'live', 'review', 'pending'];
 
@@ -74,6 +94,34 @@ const WHY: { title: string; sub: string; bg: string; color: string; ic: IconName
 /** View model for the six-stage identity-verification flow. */
 export function useKycViewModel() {
   const { kycStage, kycIdType, kycShots, kycSelfie, kycStatus, kycReturn, setState, go } = useKycState();
+  const { accForm } = useAccountState();
+  const { authed } = useSessionState();
+  const api = isApiConfigured();
+  const kycQuery = useQuery({
+    queryKey: ['kyc'],
+    queryFn: ({ signal }) => http.get<WebKyc>('/kyc', { signal }),
+    enabled: api && authed,
+  });
+  const hydrated = useRef(false);
+  useEffect(() => {
+    const record = kycQuery.data;
+    if (!record || hydrated.current) return;
+    hydrated.current = true;
+    const shots: Record<string, boolean> = {};
+    for (const capture of record.captures) {
+      const label = SIDE_LABEL[capture.side];
+      if (label) shots[label] = true;
+    }
+    const status: KycStatus =
+      record.status === 'pending' || record.status === 'verified' ? record.status : 'unverified';
+    setState({
+      kycStatus: status,
+      kycIdType: record.idType || 'national',
+      kycShots: shots,
+      kycSelfie: Boolean(record.selfie),
+      kycStage: record.stage || 'why',
+    });
+  }, [kycQuery.data, setState]);
 
   return useMemo(() => {
     const ks = kycStage;
@@ -94,7 +142,29 @@ export function useKycViewModel() {
           '; border:' +
           (done ? '1.5px solid #16a34a' : '1.5px dashed #cdd4e6') +
           ';',
-        capture: () => setState((s) => ({ kycShots: { ...s.kycShots, [lbl]: true } })),
+        capture: () => {
+          if (!api) {
+            setState((s) => ({ kycShots: { ...s.kycShots, [lbl]: true } }));
+            return;
+          }
+          void pickFile('image/jpeg,image/png,image/webp,application/pdf').then(async (file) => {
+            if (!file) return;
+            try {
+              const fileId = await uploadFile(file, 'document');
+              await http.post('/kyc/captures', { side: CAPTURE_SIDE[lbl], fileId });
+              setState((s) => ({ kycShots: { ...s.kycShots, [lbl]: true } }));
+            } catch (error: unknown) {
+              setState({
+                modal: {
+                  title: 'Document was not uploaded',
+                  body: error instanceof Error ? error.message : 'The capture was rejected.',
+                  confirmLabel: 'Close',
+                  confirm: () => setState({ modal: null }),
+                },
+              });
+            }
+          });
+        },
       };
     });
 
@@ -145,6 +215,8 @@ export function useKycViewModel() {
       livenessHint: kycSelfie
         ? 'Face captured — looks good'
         : 'Centre your face in the frame',
+      showDemoApprove: !api,
+      reference: api ? kycQuery.data?.reference || '—' : 'MB-KYC-77410',
       showSkip: ks !== 'pending',
       skipLabel: kycReturn ? 'Skip for now' : 'Do this later',
       isApproved: approved,
@@ -200,7 +272,21 @@ export function useKycViewModel() {
             '; background:' +
             (on ? '#f7f9ff' : '#fff') +
             '; transition:all .18s ease;',
-          select: () => setState({ kycIdType: t.k }),
+          select: () => {
+            setState({ kycIdType: t.k });
+            if (api) {
+              void http.patch('/kyc', { idType: t.k }).catch((error: unknown) => {
+                setState({
+                  modal: {
+                    title: 'Document type was not saved',
+                    body: error instanceof Error ? error.message : 'Try again.',
+                    confirmLabel: 'Close',
+                    confirm: () => setState({ modal: null }),
+                  },
+                });
+              });
+            }
+          },
         };
       }),
       kycTips: [
@@ -221,7 +307,7 @@ export function useKycViewModel() {
           ok: needBack ? !!kycShots['Back'] : true,
         },
         { k: 'Liveness selfie', v: kycSelfie ? 'Captured' : 'Missing', ok: kycSelfie },
-        { k: 'Full name', v: 'Marvel Tech', ok: true },
+        { k: 'Full name', v: accForm.name || '—', ok: Boolean(accForm.name) },
       ],
       kycNext: [
         { title: 'Documents received', sub: 'Encrypted and queued for review', done: true },
@@ -245,7 +331,29 @@ export function useKycViewModel() {
           (n.done ? '#16a34a' : '#eef1f8') +
           ';',
       })),
-      kycSelfie: () => setState((s) => ({ kycSelfie: !s.kycSelfie })),
+      kycSelfie: () => {
+        if (!api) {
+          setState((s) => ({ kycSelfie: !s.kycSelfie }));
+          return;
+        }
+        void pickFile('image/jpeg,image/png,image/webp').then(async (file) => {
+          if (!file) return;
+          try {
+            const fileId = await uploadFile(file, 'document');
+            await http.post('/kyc/selfie', { fileId });
+            setState({ kycSelfie: true });
+          } catch (error: unknown) {
+            setState({
+              modal: {
+                title: 'Selfie was not uploaded',
+                body: error instanceof Error ? error.message : 'The liveness check was rejected.',
+                confirmLabel: 'Close',
+                confirm: () => setState({ modal: null }),
+              },
+            });
+          }
+        });
+      },
       kycApprove: () => setState({ kycStatus: 'verified' }),
       kycSkip: () => {
         const back: RouteKey =
@@ -278,8 +386,37 @@ export function useKycViewModel() {
           return;
         }
         if (kycStage === 'review') {
-          setState({ kycStage: 'pending', kycStatus: 'pending' });
-          requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+          if (!api) {
+            setState({ kycStage: 'pending', kycStatus: 'pending' });
+            requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+            return;
+          }
+          void http
+            .post<{ reference?: string }>('/kyc/submit')
+            .then((result) => {
+              setState({
+                kycStage: 'pending',
+                kycStatus: 'pending',
+                modal: result?.reference
+                  ? {
+                      title: 'Verification submitted',
+                      body: `Reference ${result.reference}. Compliance will update this status.`,
+                      confirmLabel: 'Done',
+                      confirm: () => setState({ modal: null }),
+                    }
+                  : null,
+              });
+            })
+            .catch((error: unknown) => {
+              setState({
+                modal: {
+                  title: 'Verification was not submitted',
+                  body: error instanceof Error ? error.message : 'The KYC submission was rejected.',
+                  confirmLabel: 'Close',
+                  confirm: () => setState({ modal: null }),
+                },
+              });
+            });
           return;
         }
         setState({ kycStage: KSTAGES[i + 1] });
@@ -295,5 +432,8 @@ export function useKycViewModel() {
     kycReturn,
     setState,
     go,
+    api,
+    accForm.name,
+    kycQuery.data,
   ]);
 }

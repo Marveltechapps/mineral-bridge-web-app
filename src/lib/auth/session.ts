@@ -113,6 +113,22 @@ async function performRefresh(): Promise<boolean> {
  * request, `false` when the session is over and the caller should surface its
  * original 401. Never rejects.
  */
+/**
+ * Recover a session from the refresh cookie after a page load.
+ * A missing cookie stays anonymous and does not open the sign-in overlay.
+ */
+export async function restoreSession(): Promise<boolean> {
+  if (getSession().status === 'authenticated') return true;
+  try {
+    const token = await authClient.post<TokenResponse>('/auth/refresh', undefined, { credentials: 'include' });
+    if (!token || typeof token.accessToken !== 'string' || token.accessToken === '') return false;
+    setSession(sessionFrom(token));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function refreshSession(): Promise<boolean> {
   // A demo session has nothing to refresh, and an anonymous one never had a
   // session to begin with — neither should produce a network request.

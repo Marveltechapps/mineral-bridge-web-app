@@ -1,7 +1,11 @@
 import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { useSellState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
+import { isApiConfigured } from '@/lib/api/config';
+import { http } from '@/lib/api/client';
 import { CATS, PRODUCTS } from '@/constants/catalog';
+import { getMinerals } from '@/features/catalog/services/catalogService';
 import { FIELD } from '@/constants/tokens';
 import { money } from '@/utils/format';
 
@@ -37,6 +41,15 @@ export function useSellViewModel() {
   const { sellStep, sellForm, setState, go } = useSellState();
   const { authed } = useSessionState();
   const h = useActions();
+  const api = isApiConfigured();
+  const mineralsQuery = useQuery({
+    queryKey: ['reference', 'minerals'],
+    queryFn: ({ signal }) => getMinerals(signal),
+    enabled: api,
+  });
+  const mineralOptions = api
+    ? (mineralsQuery.data ?? []).map((m) => ({ v: m.id, label: m.name, category: m.categoryName }))
+    : PRODUCTS.map((p) => ({ v: p.name, label: p.name, category: p.category }));
 
   return useMemo(() => {
     const ss = sellStep;
@@ -75,8 +88,8 @@ export function useSellViewModel() {
     });
 
     const sfQtyN = parseFloat(sf.qty) || 0;
-    const sGross = sfQtyN * INDICATIVE_RATE;
-    const sFeeV = sGross * SELLER_FEE;
+    const sGross = api ? 0 : sfQtyN * INDICATIVE_RATE;
+    const sFeeV = api ? 0 : sGross * SELLER_FEE;
 
     const sellNext = () => {
       const cur = sellStep;
@@ -104,7 +117,56 @@ export function useSellViewModel() {
         return;
       }
       if (cur === 3) {
-        h.requireKyc('submit a listing', () => setState({ sellStep: 4 }), 'sell');
+        h.requireKyc(
+          'submit a listing',
+          () => {
+            if (!api) {
+              setState({ sellStep: 4 });
+              return;
+            }
+            const chosen = mineralOptions.find((m) => m.v === sf.mineral);
+            const form = sf.form === 'Semi-finished' ? 'semi_finished' : sf.form === 'Finished' ? 'finished' : 'raw';
+            const slot = sf.slot.toLowerCase();
+            const country = sf.country.trim();
+            if (country.length !== 2) {
+              setState({
+                modal: {
+                  title: 'Country code needed',
+                  body: 'Enter the 2-letter country code for the verification visit, such as GH or ZA.',
+                  confirmLabel: 'Got it',
+                  confirm: () => setState({ modal: null }),
+                },
+              });
+              return;
+            }
+            void http
+              .post('/listings', {
+                mineralId: sf.mineral === '__other' ? null : sf.mineral,
+                customMineralName: sf.mineral === '__other' ? sf.customMineral : chosen?.label,
+                quantity: { value: parseFloat(sf.qty) || 0, unit: sf.unit },
+                form,
+                verificationAddress: {
+                  city: sf.city || 'Unspecified',
+                  country: country.toUpperCase(),
+                },
+                preferredSlot: slot === 'morning' || slot === 'afternoon' ? slot : 'flexible',
+                payoutPreference: sf.payout || 'Bank transfer',
+                submit: true,
+              }, { headers: { 'Idempotency-Key': crypto.randomUUID() } })
+              .then(() => setState({ sellStep: 4 }))
+              .catch((error: unknown) => {
+                setState({
+                  modal: {
+                    title: 'Listing was not submitted',
+                    body: error instanceof Error ? error.message : 'The sell request could not be saved.',
+                    confirmLabel: 'Close',
+                    confirm: () => setState({ modal: null }),
+                  },
+                });
+              });
+          },
+          'sell',
+        );
         return;
       }
       if (cur === 1) {
@@ -178,10 +240,13 @@ export function useSellViewModel() {
         },
       ],
       sellForm: sf,
-      sellCatOpts: CATS.map((c) => ({ v: c.name, sel: sf.category === c.name })),
+      sellCatOpts: (api
+        ? Array.from(new Set(mineralOptions.map((m) => m.category).filter(Boolean)))
+        : CATS.map((c) => c.name)
+      ).map((name) => ({ v: name, sel: sf.category === name })),
       sellUnitOpts: ['g', 'kg', 'oz', 'ct', 'MT'].map((u) => ({ v: u, sel: sf.unit === u })),
       sellMineralOpts: [{ v: '', label: 'Select a mineral…' }]
-        .concat(PRODUCTS.map((p) => ({ v: p.name, label: p.name })))
+        .concat(mineralOptions.map((p) => ({ v: p.v, label: p.label })))
         .concat([{ v: '__other', label: 'Other — not listed' }])
         .map((o) => ({ v: o.v, label: o.label, sel: sf.mineral === o.v })),
       sellIsOther: isOther,
@@ -200,14 +265,14 @@ export function useSellViewModel() {
         i,
         bg: i < 2 ? 'linear-gradient(140deg,#f3d27a,#b8860b)' : '#eef1f8',
       })),
-      sellGross: money(sGross),
-      sellFee: money(sFeeV),
-      sellNet: money(sGross - sFeeV),
+      sellGross: api ? '—' : money(sGross),
+      sellFee: api ? '—' : money(sFeeV),
+      sellNet: api ? '—' : money(sGross - sFeeV),
       sellBack: () => setState((s) => ({ sellStep: Math.max(1, s.sellStep - 1) })),
       sellNext,
       sfMineralPick: (e: React.ChangeEvent<HTMLSelectElement>) => {
         const v = e.target.value;
-        const p = PRODUCTS.find((x) => x.name === v);
+        const p = mineralOptions.find((x) => x.v === v);
         setState((s) => ({
           sellForm: {
             ...s.sellForm,
@@ -232,5 +297,5 @@ export function useSellViewModel() {
       sfCountry: (e: React.ChangeEvent<HTMLInputElement>) =>
         setState((s) => ({ sellForm: { ...s.sellForm, country: e.target.value } })),
     };
-  }, [sellStep, sellForm, authed, setState, go, h]);
+  }, [sellStep, sellForm, authed, setState, go, h, api, mineralOptions]);
 }

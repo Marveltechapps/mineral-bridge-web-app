@@ -477,12 +477,12 @@ export function KycPage() {
                 REFERENCE
               </div>
               <div style={css('font-size:15px; font-weight:800; color:#141a2e; margin-top:2px;')}>
-                MB-KYC-77410
+                {kyc.reference}
               </div>
             </div>
             <span style={css(kyc.refChip)}>{kyc.refLabel}</span>
           </div>
-          {kyc.notApproved && (
+          {kyc.notApproved && kyc.showDemoApprove && (
             <button
               onClick={vm.kycApprove}
               style={css(

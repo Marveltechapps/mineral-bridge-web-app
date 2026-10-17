@@ -13,7 +13,7 @@ export const ORDERS: Order[] = [
     status: 'In review',
     sc: '#b45309',
     sbg: '#fdecd6',
-    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Gold-crystals.jpg?width=1200") center/cover, linear-gradient(140deg,#f3d27a,#b8860b)',
+    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Gold-crystals.jpg?width=1200") center / contain no-repeat, #eef1f6',
   },
   {
     id: 'MB-SELL-41982',
@@ -25,7 +25,7 @@ export const ORDERS: Order[] = [
     status: 'Active',
     sc: '#2563eb',
     sbg: '#dbeafe',
-    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Silver%20crystal.jpg?width=1200") center/cover, linear-gradient(140deg,#dfe4ea,#8b97a3)',
+    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Silver%20crystal.jpg?width=1200") center / contain no-repeat, #eef1f6',
   },
   {
     id: 'MB-ORDER-32890',
@@ -38,7 +38,7 @@ export const ORDERS: Order[] = [
     status: 'Complete',
     sc: '#16a34a',
     sbg: '#dcf3e8',
-    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Platinum%20crystals.jpg?width=1200") center/cover, linear-gradient(140deg,#d9dee4,#9aa6b2)',
+    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Platinum%20crystals.jpg?width=1200") center / contain no-repeat, #eef1f6',
   },
   {
     id: 'MB-ORDER-31544',
@@ -54,7 +54,7 @@ export const ORDERS: Order[] = [
       'The seller’s export permit had lapsed at the time of verification, so the lot could not be assured. No payment was taken and your escrow hold has been released.',
     sc: '#dc2626',
     sbg: '#fdecec',
-    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Quartz%20Br%C3%A9sil.jpg?width=1200") center/cover, linear-gradient(140deg,#e6ebf0,#a7b2bd)',
+    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Quartz%20Br%C3%A9sil.jpg?width=1200") center / contain no-repeat, #eef1f6',
   },
   {
     id: 'MB-SELL-41120',
@@ -66,7 +66,7 @@ export const ORDERS: Order[] = [
     status: 'Active',
     sc: '#2563eb',
     sbg: '#dbeafe',
-    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Smaragd.jpg?width=1200") center/cover, linear-gradient(140deg,#3fb984,#0a5c3a)',
+    grad: 'url("https://commons.wikimedia.org/wiki/Special:FilePath/Smaragd.jpg?width=1200") center / contain no-repeat, #eef1f6',
   },
 ];
 

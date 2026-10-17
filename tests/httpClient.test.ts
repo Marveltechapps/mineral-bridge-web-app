@@ -90,7 +90,11 @@ describe('httpClient — requests', () => {
     expect(calls).toHaveLength(1);
     expect(calls[0].url).toBe(`${BASE}/lots`);
     expect(calls[0].init.method).toBe('GET');
-    expect(headersOf(calls[0])).toEqual({ Accept: 'application/json' });
+    expect(headersOf(calls[0])).toEqual({
+      Accept: 'application/json',
+      'X-Client': 'mineralbridge-web/1.0',
+      'X-Requested-With': 'mb-web',
+    });
     expect(calls[0].init.body).toBeUndefined();
   });
 
@@ -150,7 +154,12 @@ describe('httpClient — requests', () => {
 
     await client.get('/lots', { headers: { 'Accept-Language': 'fr', Accept: 'text/csv' } });
 
-    expect(headersOf(calls[0])).toEqual({ Accept: 'text/csv', 'Accept-Language': 'fr' });
+    expect(headersOf(calls[0])).toEqual({
+      Accept: 'text/csv',
+      'Accept-Language': 'fr',
+      'X-Client': 'mineralbridge-web/1.0',
+      'X-Requested-With': 'mb-web',
+    });
   });
 });
 

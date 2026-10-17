@@ -36,7 +36,7 @@ export function ProductCard({ product: p }: { product: ProductCardModel }) {
       )}
     >
       <div style={css('border:none; padding:0; background:none; text-align:left;')}>
-        <div style={css('height:142px; background:' + p.grad + '; position:relative;')}>
+        <div style={css('height:180px; background:' + p.grad + '; position:relative; background-color:#eef1f6;')}>
           <span
             style={css(
               'position:absolute; top:12px; left:12px; background:rgba(255,255,255,.94); color:#141a2e; font-size:10px; font-weight:800; letter-spacing:.4px; padding:5px 10px; border-radius:8px;',

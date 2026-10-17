@@ -77,7 +77,10 @@ export function useActions() {
       note,
       closeModal,
       goHome: () => go('home'),
-      goBuy: () => go('buy'),
+      goBuy: () => {
+        setState({ homeFilter: 'all', subcategory: '', mineralType: '', productForm: '', query: '' });
+        go('buy');
+      },
       goSell: () => go('sell'),
       goOrders: () => go('orders'),
       goAccount: () => go('account'),

@@ -193,7 +193,7 @@ export function HomePage() {
           <div>
             <h2 style={css(H2)}>Shop by category</h2>
             <p style={css('font-size:14px; color:#6b7290; margin:6px 0 0;')}>
-              Five verified categories, 190+ mineral types.
+              {vm.homeCategoryLead}
             </p>
           </div>
           <button
@@ -215,7 +215,7 @@ export function HomePage() {
               className="v2-lift"
               onClick={c.open}
               style={css(
-                'position:relative; overflow:hidden; height:168px; border:none; border-radius:18px; cursor:pointer; padding:0; text-align:left; box-shadow:0 6px 18px rgba(20,26,46,.08);',
+                'position:relative; overflow:hidden; height:168px; border:none; border-radius:18px; cursor:pointer; padding:0; text-align:left; box-shadow:0 6px 18px rgba(20,26,46,.08); background:#eef1f6;',
               )}
             >
               <span style={css('position:absolute; inset:0; background:' + c.grad + ';')} />
@@ -270,6 +270,17 @@ export function HomePage() {
             <ProductCard key={p.id} product={p} />
           ))}
         </div>
+        {vm.homeNotice && (
+          <div style={css('margin-top:18px; font-size:14px; color:#6b7290;')}>
+            {vm.homeNotice}{' '}
+            <button
+              onClick={vm.retryCatalog}
+              style={css('background:none; border:none; padding:0; color:#1e2a5a; font-weight:800; cursor:pointer;')}
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </section>
 
       {/* verify passport */}

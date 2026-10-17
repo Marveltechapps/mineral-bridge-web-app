@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiError } from '@/lib/api/ApiError';
-import { catalogKeys, getLot, getLots } from '@/features/catalog/services/catalogService';
+import { catalogKeys, getLot, getLots, lotToProduct } from '@/features/catalog/services/catalogService';
 import type { Paginated } from '@/lib/api/types';
 import type { Product } from '@/types';
 
@@ -72,7 +72,7 @@ describe('getLots()', () => {
     });
 
     expect(urls[0]).toBe(
-      `${BASE}/lots?category=gemstone&grade=VS1&sellerType=Cooperative&q=ruby&sort=low&page=2&perPage=24`,
+      `${BASE}/lots?category=gemstone&grade=VS1&sellerType=Cooperative&q=ruby&sort=price_asc&page=2&perPage=24`,
     );
   });
 
@@ -81,7 +81,7 @@ describe('getLots()', () => {
 
     await getLots({ category: 'all', grade: '', query: '', sort: 'featured' });
 
-    expect(urls[0]).toBe(`${BASE}/lots?sort=featured`);
+    expect(urls[0]).toBe(`${BASE}/lots?sort=newest`);
   });
 
   it('passes the caller’s signal through, so a superseded filter cancels', async () => {
@@ -114,6 +114,29 @@ describe('getLots()', () => {
     expect(error).toBeInstanceOf(ApiError);
     expect((error as ApiError).status).toBe(503);
     expect((error as ApiError).code).toBe('catalog/unavailable');
+  });
+});
+
+describe('lotToProduct()', () => {
+  it('keeps the sheet name, category slug and image', () => {
+    const product = lotToProduct({
+      id: 'prd_lignite',
+      title: 'Lignite Crushed',
+      mineral: { category: 'energy-mineral', type: 'Lignite' },
+      categoryName: 'Energy Mineral',
+      subcategoryName: 'Lignite',
+      listPrice: 19,
+      priceUnit: 'MT',
+      available: { value: 0, unit: 'g' },
+      imageUrl: 'https://images.example/lignite.jpg',
+    });
+
+    expect(product.name).toBe('Lignite Crushed');
+    expect(product.catKey).toBe('energy-mineral');
+    expect(product.subCategory).toBe('Lignite');
+    expect(product.stock).toBe('per MT');
+    expect(product.grad).toContain('https://images.example/lignite.jpg');
+    expect(product.name).not.toBe('Gold Concentrate');
   });
 });
 

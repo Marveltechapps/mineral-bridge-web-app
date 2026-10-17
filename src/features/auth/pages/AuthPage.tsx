@@ -121,6 +121,8 @@ export function AuthPage() {
                 <input
                   placeholder="you@company.com"
                   aria-label="Email address"
+                  value={vm.identifier}
+                  onChange={(e) => vm.setIdentifier(e.target.value)}
                   style={css(TALL_INPUT)}
                 />
               ) : (
@@ -135,6 +137,8 @@ export function AuthPage() {
                   <input
                     placeholder="82 000 0000"
                     aria-label={vm.fieldLabel}
+                    value={vm.identifier}
+                    onChange={(e) => vm.setIdentifier(e.target.value)}
                     style={css(
                       'flex:1; height:54px; border:1px solid #dde2f0; border-radius:13px; padding:0 16px; font-size:15px; outline:none;',
                     )}
@@ -158,6 +162,11 @@ export function AuthPage() {
                   <b style={css('color:#1e2a5a;')}>Privacy Policy</b>.
                 </span>
               </label>
+              {vm.authError ? (
+                <p role="alert" style={css('color:#9b2335; font-size:13px; margin:14px 0 0;')}>
+                  {vm.authError}
+                </p>
+              ) : null}
               <button className="v2-btn" onClick={vm.sendOtp} style={css(PRIMARY)}>
                 Send verification code
               </button>
@@ -168,13 +177,19 @@ export function AuthPage() {
             <>
               <h3 style={css(H3)}>Enter your code</h3>
               <p style={css('font-size:14px; color:#6b7290; margin:8px 0 0;')}>
-                We sent a 4-digit code to your number.
+                We sent a 4-digit code to {vm.target}.
               </p>
               <div style={css('display:flex; gap:13px; margin-top:26px;')}>
+                {vm.authError ? <p style={css('color:#9b2335; font-size:13px; margin:8px 0 0;')}>{vm.authError}</p> : null}
                 {vm.otpBoxes.map((b) => (
-                  <div key={b.i} style={css(b.style)}>
-                    {b.val}
-                  </div>
+                  <input
+                    key={b.i}
+                    aria-label={`Code digit ${b.i + 1}`}
+                    inputMode="numeric"
+                    value={b.val}
+                    onChange={(e) => b.onChange(e.target.value)}
+                    style={css(b.style)}
+                  />
                 ))}
               </div>
               <button
@@ -187,7 +202,16 @@ export function AuthPage() {
               <div
                 style={css('text-align:center; font-size:13.5px; color:#6b7290; margin-top:18px;')}
               >
-                Didn&apos;t get it? <b style={css('color:#1e2a5a; cursor:pointer;')}>Resend</b> · 02:58
+                Didn&apos;t get it?{' '}
+                <button
+                  type="button"
+                  onClick={vm.resendOtp}
+                  disabled={vm.resendIn > 0}
+                  style={css('background:none; border:none; padding:0; color:#1e2a5a; font-weight:800; cursor:pointer;')}
+                >
+                  Resend
+                </button>{' '}
+                · {vm.resendHint}
               </div>
             </>
           )}

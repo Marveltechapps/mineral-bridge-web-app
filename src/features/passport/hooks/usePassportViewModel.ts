@@ -1,5 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { usePassportState } from '@/hooks/useAppState';
+import { isApiConfigured } from '@/lib/api/config';
+import { http } from '@/lib/api/client';
+import { ApiError } from '@/lib/api/ApiError';
 import { PRODUCTS } from '@/constants/catalog';
 import type { Product } from '@/types';
 
@@ -23,20 +26,40 @@ export const passportId = (p: Product): string => {
 /** Mineral Passport lookup shown on the home screen. */
 export function usePassportViewModel() {
   const { passportQ, passportShown, setState } = usePassportState();
+  const api = isApiConfigured();
+  const [remote, setRemote] = useState<{ name: string; origin: string; grade: string } | null>(null);
+  const [lookupError, setLookupError] = useState<string | null>(null);
 
   return useMemo(() => {
     const q = (passportQ || '').trim().toUpperCase();
-    const hit = PRODUCTS.find((p) => passportId(p) === q);
+    const hit = api ? null : PRODUCTS.find((p) => passportId(p) === q);
+    const foundRemote = api && passportShown && remote && !lookupError;
 
     return {
       q: passportQ,
       id: q,
       idle: !passportShown,
-      found: passportShown && !!hit,
-      notFound: passportShown && !hit,
+      found: api ? Boolean(foundRemote) : passportShown && !!hit,
+      notFound: api ? passportShown && !foundRemote && q.length > 0 : passportShown && !hit,
+      lookupError,
       onQ: (e: React.ChangeEvent<HTMLInputElement>) =>
         setState({ passportQ: e.target.value, passportShown: false }),
-      verify: () => setState({ passportShown: true }),
+      verify: () => {
+        setState({ passportShown: true });
+        if (!api) return;
+        setRemote(null);
+        setLookupError(null);
+        const id = (passportQ || '').trim();
+        if (!id) return;
+        void http
+          .get<{ mineral?: string; origin?: string; purity?: string | null }>(`/passports/${encodeURIComponent(id)}`)
+          .then((record) => setRemote({ name: record.mineral || '', origin: record.origin || '', grade: record.purity || '' }))
+          .catch((error: unknown) => {
+            setRemote(null);
+            setLookupError(error instanceof ApiError && error.status === 404 ? null : error instanceof Error ? error.message : 'Lookup failed');
+          });
+      },
+      showDemo: !api,
       tryDemo: () => setState({ passportQ: 'MBP-2026-0419-AU', passportShown: true }),
       proves: [
         { v: 'Where the mineral was extracted' },
@@ -44,7 +67,13 @@ export function usePassportViewModel() {
         { v: 'Every custody handover, sealed and signed' },
         { v: 'That the record has not been altered' },
       ],
-      rows: hit
+      rows: foundRemote && remote
+        ? [
+            { k: 'Lot', v: remote.name },
+            { k: 'Origin', v: remote.origin },
+            { k: 'Assay', v: remote.grade || '—' },
+          ]
+        : hit
         ? [
             { k: 'Lot', v: hit.name },
             { k: 'Origin', v: hit.region },
@@ -55,5 +84,5 @@ export function usePassportViewModel() {
           ]
         : [],
     };
-  }, [passportQ, passportShown, setState]);
+  }, [passportQ, passportShown, setState, api, remote, lookupError]);
 }
