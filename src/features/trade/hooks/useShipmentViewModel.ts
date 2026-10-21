@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useTradeState } from '@/hooks/useAppState';
+import { isApiConfigured } from '@/lib/api/config';
 import { money } from '@/utils/format';
 import { SHIP_EVENTS } from '@/features/trade/constants';
 
@@ -11,6 +12,7 @@ export function useShipmentViewModel() {
     const total = (parseFloat(ct.price) || 0) * (parseFloat(ct.qty) || 0);
 
     return {
+      hasShipment: !isApiConfigured() && Boolean(ct.lot),
       lot: ct.lot,
       ref: 'B/L MEDU 4471882 · LC-2026-0419',
       from: 'Tema, GH',

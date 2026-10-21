@@ -41,51 +41,39 @@ describe('navigation', () => {
 });
 
 describe('catalog navigation', () => {
-  it('starts on the categories and hides product forms', () => {
+  it('shows search, filters and the assured lot grid', () => {
     renderApp('/buy');
-    expect(screen.getByRole('heading', { name: 'Browse by category' })).toBeInTheDocument();
-    for (const name of ['Precious Metals', 'Gemstones', 'Industrial Minerals', 'Base & Alloy Metals', 'Energy & Strategic Minerals']) {
-      expect(screen.getByRole('button', { name: new RegExp(name) })).toBeInTheDocument();
-    }
-    expect(screen.queryByRole('button', { name: /Gold Concentrate/ })).not.toBeInTheDocument();
-  });
-
-  it('opens one category’s subcategories, then only that subcategory’s forms', async () => {
-    const { user } = renderApp('/buy');
-    await user.click(screen.getByRole('button', { name: /Precious Metals/ }));
-    expect(screen.getByRole('heading', { name: 'Precious Metals' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Gold/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^Silver/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Diamond/ })).not.toBeInTheDocument();
-
-    await user.click(screen.getByRole('button', { name: /^Gold/ }));
-    expect(screen.getByRole('heading', { name: 'Gold' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Browse minerals' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Search minerals')).toBeInTheDocument();
+    expect(screen.getByLabelText('Category')).toBeInTheDocument();
+    expect(screen.getByLabelText('Subcategory')).toBeInTheDocument();
+    expect(screen.getByLabelText('Mineral type')).toBeInTheDocument();
+    expect(screen.getByLabelText('Form')).toBeInTheDocument();
+    expect(screen.getByLabelText('Sort')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Gold Concentrate/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /Silver Bullion/ })).not.toBeInTheDocument();
   });
 
-  it('goes back a level and does not keep the previous subcategory’s forms', async () => {
+  it('filters the grid by category and search', async () => {
     const { user } = renderApp('/buy');
-    await user.click(screen.getByRole('button', { name: /Precious Metals/ }));
-    await user.click(screen.getByRole('button', { name: /^Gold/ }));
-    await user.click(screen.getByRole('button', { name: 'Subcategories' }));
-    expect(screen.queryByRole('button', { name: /Gold Concentrate/ })).not.toBeInTheDocument();
+    await user.selectOptions(screen.getByLabelText('Category'), 'precious');
+    expect(screen.getByRole('button', { name: /Gold Concentrate/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Copper Cathode/ })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: 'Categories' }));
-    await user.click(screen.getByRole('button', { name: /Gemstones/ }));
-    expect(screen.queryByRole('button', { name: /^Gold/ })).not.toBeInTheDocument();
-    await user.click(screen.getByRole('button', { name: /Tanzanite/ }));
-    expect(screen.getByText('No product forms for this subcategory')).toBeInTheDocument();
+    await user.type(screen.getByLabelText('Search minerals'), 'zzzz');
+    expect(screen.getByRole('heading', { name: 'No minerals match that search' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    expect(screen.getByRole('button', { name: /Copper Cathode/ })).toBeInTheDocument();
   });
 });
 
 describe('sell wizard', () => {
-  it('asks an anonymous visitor to sign in before anything else', async () => {
+  it('flags missing mineral details before asking anyone to sign in', async () => {
     const { user } = renderApp('/sell');
     expect(screen.getByText('Step 1 of 4')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: 'Continue' }));
-    expect(screen.getByText('Sign in to continue')).toBeInTheDocument();
+    expect(screen.getByText('A few details missing')).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Create your account' })).not.toBeInTheDocument();
   });
 
   it('blocks a signed-in seller until a mineral and quantity are given', async () => {

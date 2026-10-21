@@ -8,6 +8,8 @@ export interface AsmSlice {
   asmMin: Record<string, boolean>;
   asmDocs: Record<string, boolean>;
   asmGps: boolean;
+  asmCoords: string;
+  asmGpsError: string;
   asmForm: AsmForm;
 }
 
@@ -17,6 +19,8 @@ export const asmInitial: AsmSlice = {
   asmMin: {},
   asmDocs: {},
   asmGps: false,
+  asmCoords: '',
+  asmGpsError: '',
   asmForm: { site: '', country: '', region: '', workers: 12 },
 };
 
@@ -26,5 +30,7 @@ export const ASM_KEYS = [
   'asmMin',
   'asmDocs',
   'asmGps',
+  'asmCoords',
+  'asmGpsError',
   'asmForm',
 ] as const satisfies readonly (keyof AsmSlice)[];

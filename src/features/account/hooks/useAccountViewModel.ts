@@ -72,6 +72,11 @@ export function useAccountViewModel() {
     queryFn: ({ signal }) => http.get<{ items: Array<{ id: string }> }>('/auth/sessions', { signal }),
     enabled: api && authed,
   });
+  const profileQuery = useQuery({
+    queryKey: ['account', 'profile'],
+    queryFn: ({ signal }) => http.get<{ hasPassword?: boolean }>('/account/profile', { signal }),
+    enabled: api && authed,
+  });
   return useMemo(() => {
     const sheet = (title: string, body: string, label?: string) =>
       setState({
@@ -225,9 +230,16 @@ export function useAccountViewModel() {
             'Manage',
             () => h.openAccEdit('sessions'),
           ),
-          act('Change password', api ? 'Update the password for this account' : 'Last changed 3 months ago', 'Change', () =>
-            h.openAccEdit('password'),
-          ),
+          ...(!api || profileQuery.data?.hasPassword
+            ? [
+                act(
+                  'Change password',
+                  api ? 'Update the password for this account' : 'Last changed 3 months ago',
+                  'Change',
+                  () => h.openAccEdit('password'),
+                ),
+              ]
+            : []),
         ],
         'Save security settings',
         true,
@@ -249,7 +261,9 @@ export function useAccountViewModel() {
             sheet(
               'Callback requested',
               api
-                ? 'Our desk will call the mobile number on your profile.'
+                ? accForm.mobile
+                  ? 'Our desk will call the mobile number on your profile.'
+                  : 'Add a mobile number on your profile so our desk can call you.'
                 : 'Our desk will call you on +27 82 445 1120 within the hour.',
               'Done',
             ),
@@ -341,14 +355,31 @@ export function useAccountViewModel() {
             title: 'Delete account?',
             body: 'This permanently removes your profile, documents and payout methods. Open orders must settle first. This cannot be undone.',
             confirmLabel: 'Delete account',
+            promptLabel: 'Type DELETE to confirm',
+            promptPlaceholder: 'DELETE',
+            promptMatch: 'DELETE',
             confirm: () => {
-              if (isApiConfigured()) {
-                void http
-                  .delete('/auth/account', { body: { confirmation: 'DELETE' } })
-                  .catch(() => undefined);
+              if (!isApiConfigured()) {
+                signOut();
+                setState({ authed: false, modal: null, route: 'home' });
+                return;
               }
-              signOut();
-              setState({ authed: false, modal: null, route: 'home' });
+              void http
+                .delete('/auth/account', { body: { confirmation: 'DELETE' } })
+                .then(() => {
+                  signOut();
+                  setState({ authed: false, modal: null, route: 'home' });
+                })
+                .catch((error: unknown) => {
+                  setState({
+                    modal: {
+                      title: 'Account was not deleted',
+                      body: error instanceof Error ? error.message : 'The account was not deleted.',
+                      confirmLabel: 'Close',
+                      confirm: () => setState({ modal: null }),
+                    },
+                  });
+                });
             },
           },
         }),
@@ -369,5 +400,6 @@ export function useAccountViewModel() {
     payoutsQuery.data,
     documentsQuery.data,
     sessionsQuery.data,
+    profileQuery.data,
   ]);
 }

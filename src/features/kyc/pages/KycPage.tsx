@@ -196,7 +196,7 @@ export function KycPage() {
       {kyc.isCapture && (
         <div className="v2-pr">
           <h1 style={css(H1)}>Upload your {kyc.idLabel}</h1>
-          <p style={css(SUB)}>Both sides, in focus, all four corners visible.</p>
+          <p style={css(SUB)}>{kyc.captureHint}</p>
           <div
             className="v2-g2"
             style={css('display:grid; grid-template-columns:1fr 1fr; gap:16px;')}
@@ -306,7 +306,7 @@ export function KycPage() {
                       "position:relative; color:#fff; font-family:'Poppins'; font-size:44px; font-weight:800;",
                     )}
                   >
-                    MT
+                    {kyc.selfieInitials}
                   </span>
                 </>
               ) : (

@@ -71,6 +71,8 @@ export function useAuctionsViewModel() {
     enabled: api,
   });
   const auctions = api ? (auctionsQuery.data ?? EMPTY_AUCTIONS) : AUCS;
+  const aucLoading = api && auctionsQuery.isLoading;
+  const aucFailed = api && auctionsQuery.isError;
 
   return useMemo(() => {
     const aucList = auctions.filter((a) => a.state === aucTab).map((a) => {
@@ -199,6 +201,9 @@ export function useAuctionsViewModel() {
         select: () => setState({ aucTab: t.k }),
       })),
       aucList,
+      aucLoading,
+      aucFailed,
+      aucEmpty: !aucLoading && !aucFailed && aucList.length === 0,
       auc,
       bidValue: String(bidValue || 0),
       aucOutbid: !!outbidLot && !outbidDismissed,
@@ -212,25 +217,27 @@ export function useAuctionsViewModel() {
       placeBid: () => {
         if (!authed) {
           setState({
-            modal: {
-              title: 'Sign in to bid',
-              body: 'Bidding requires a verified account.',
-              confirmLabel: 'Sign in',
-              confirm: () =>
-                setState({
-                  modal: null,
-                  authOpen: true,
-                  authMode: 'login',
-                  authStage: 'form',
-                  pendingResume: 'auctionDetail',
-                }),
-            },
+            authOpen: true,
+            authMode: 'login',
+            authStage: 'form',
+            pendingResume: 'auctionDetail',
           });
           return;
         }
         h.requireKyc(
           'place a bid',
           () => {
+            if (!(bidValue > 0)) {
+              setState({
+                modal: {
+                  title: 'Enter a bid amount',
+                  body: 'Enter a bid greater than zero before it can be sent.',
+                  confirmLabel: 'Got it',
+                  confirm: () => setState({ modal: null }),
+                },
+              });
+              return;
+            }
             if (!api || !av.id) {
               setState({
                 modal: {
@@ -298,6 +305,8 @@ export function useAuctionsViewModel() {
     h,
     api,
     auctions,
+    aucLoading,
+    aucFailed,
     client,
   ]);
 }

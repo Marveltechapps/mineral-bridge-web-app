@@ -13,6 +13,35 @@ const SIG_COL = 'border-top:1.5px solid #141a2e; padding-top:9px;';
 export function ContractPage() {
   const c = useContractViewModel();
 
+  if (!c.hasDraft) {
+    return (
+      <div style={css('max-width:1440px; margin:0 auto; padding:32px;')}>
+        <h1
+          style={css(
+            "font-family:'Poppins'; font-size:28px; font-weight:800; color:#141a2e; margin:0; letter-spacing:-.5px;",
+          )}
+        >
+          Contract Builder
+        </h1>
+        <p style={css('font-size:14px; color:#6b7290; margin:6px 0 22px;')}>
+          A contract is drafted from an agreed offer, or from a letter-of-credit purchase.
+        </p>
+        <div
+          style={css(
+            'background:#fff; border:1px solid #e7eaf3; border-radius:18px; padding:36px 28px;',
+          )}
+        >
+          <h2 style={css("font-family:'Poppins'; font-size:20px; margin:0; color:#141a2e;")}>
+            No contract draft yet
+          </h2>
+          <p style={css('font-size:14px; color:#6b7290; margin:8px 0 0;')}>
+            Accept an offer in the Negotiation Room, or choose Letter of Credit on a mineral, to start a draft.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={css('max-width:1440px; margin:0 auto; padding:32px;')}>
       <h1
@@ -203,7 +232,7 @@ export function ContractPage() {
               >
                 <p style={css('margin:0 0 12px;')}>
                   Made between <b style={css(BOLD)}>{c.f.seller}</b> (Seller) and{' '}
-                  <b style={css(BOLD)}>Marvel Trading Co.</b> (Buyer), facilitated by Mineral Bridge.
+                  <b style={css(BOLD)}>{c.buyer}</b> (Buyer), facilitated by Mineral Bridge.
                 </p>
                 <p style={css('margin:0 0 12px;')}>
                   <b style={css(BOLD)}>1. Goods.</b> {c.f.lot}, quantity{' '}

@@ -28,7 +28,7 @@ const oTab = (on: boolean) =>
 /** View model for the "My Orders" list, its side filters and status tabs. */
 export function useOrdersViewModel() {
   const { orderFilter, orderTab, setState, go } = useOrdersState();
-  const { authed } = useSessionState();
+  const { authed, sessionReady } = useSessionState();
   const api = isApiConfigured();
   const ordersQuery = useQuery({
     queryKey: ['orders'],
@@ -37,6 +37,7 @@ export function useOrdersViewModel() {
   });
   const orders = api ? (ordersQuery.data ?? EMPTY_ORDERS) : ORDERS;
   const failed = api && ordersQuery.isError;
+  const needsSignIn = api && sessionReady && !authed;
 
   return useMemo(() => {
     const scoped = orders.filter((o) =>
@@ -98,14 +99,17 @@ export function useOrdersViewModel() {
         { v: 'PIPELINE STAGE' },
         { v: 'STATUS' },
       ],
-      orderRows,
-      ordersEmpty: orderRows.length === 0,
-      ordersEmptyMsg: failed
-        ? 'Orders could not be loaded.'
-        : orderTab === 'completed'
-          ? 'No completed orders yet.'
-          : 'No active orders right now.',
+      orderRows: needsSignIn ? [] : orderRows,
+      ordersEmpty: needsSignIn || orderRows.length === 0,
+      needsSignIn,
+      ordersEmptyMsg: needsSignIn
+        ? 'Sign in to see your orders.'
+        : failed
+          ? 'Orders could not be loaded.'
+          : orderTab === 'completed'
+            ? 'No completed orders yet.'
+            : 'No active orders right now.',
       retryOrders: () => void ordersQuery.refetch(),
     };
-  }, [orderFilter, orderTab, setState, go, orders, failed, ordersQuery]);
+  }, [orderFilter, orderTab, setState, go, orders, failed, needsSignIn, ordersQuery]);
 }

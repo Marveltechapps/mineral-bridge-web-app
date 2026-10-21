@@ -11,6 +11,35 @@ const VERIFIED_PILL =
 export function ShipmentPage() {
   const ship = useShipmentViewModel();
 
+  if (!ship.hasShipment) {
+    return (
+      <div style={css('max-width:1440px; margin:0 auto; padding:32px;')}>
+        <h1
+          style={css(
+            "font-family:'Poppins'; font-size:28px; font-weight:800; color:#141a2e; margin:0; letter-spacing:-.5px;",
+          )}
+        >
+          Shipment Tracking
+        </h1>
+        <p style={css('font-size:14px; color:#6b7290; margin:6px 0 22px;')}>
+          Location, carrier and the current leg of an open shipment.
+        </p>
+        <div
+          style={css(
+            'background:#fff; border:1px solid #e7eaf3; border-radius:18px; padding:36px 28px;',
+          )}
+        >
+          <h2 style={css("font-family:'Poppins'; font-size:20px; margin:0; color:#141a2e;")}>
+            No shipment is in progress
+          </h2>
+          <p style={css('font-size:14px; color:#6b7290; margin:8px 0 0;')}>
+            Tracking appears here once a signed trade is handed to a carrier.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={css('max-width:1440px; margin:0 auto; padding:32px;')}>
       <div

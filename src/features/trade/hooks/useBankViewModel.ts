@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useTradeState } from '@/hooks/useAppState';
+import { isApiConfigured } from '@/lib/api/config';
 import { CHIP } from '@/constants/tokens';
 import { chipStyle, formatDate, money } from '@/utils/format';
 import { LC_DOCS, tradeBtn } from '@/features/trade/constants';
@@ -111,7 +112,13 @@ export function useBankViewModel() {
             ]
           : null;
 
+    const customerView = isApiConfigured();
+
     return {
+      customerView,
+      ownStatus: ct.lot ? lcStatus : '',
+      ownAmount: ct.lot ? money(total) : '',
+      ownGoods: ct.lot,
       tabs: (
         [
           ['apps', 'LC applications'],

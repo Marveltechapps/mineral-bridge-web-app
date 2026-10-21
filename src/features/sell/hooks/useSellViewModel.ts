@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useSellState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
@@ -50,12 +50,14 @@ export function useSellViewModel() {
   const mineralOptions = api
     ? (mineralsQuery.data ?? []).map((m) => ({ v: m.id, label: m.name, category: m.categoryName }))
     : PRODUCTS.map((p) => ({ v: p.name, label: p.name, category: p.category }));
+  const submitting = useRef(false);
 
   return useMemo(() => {
     const ss = sellStep;
     const sf = sellForm;
     const isOther = sf.mineral === '__other';
-    const resolvedMineral = isOther ? sf.customMineral || '' : sf.mineral || '';
+    const mineralLabel = mineralOptions.find((m) => m.v === sf.mineral)?.label;
+    const resolvedMineral = isOther ? sf.customMineral || '' : mineralLabel || sf.mineral || '';
 
     const sellSteps = STEP_DEFS.map((s) => {
       const done = ss > s.n;
@@ -98,25 +100,46 @@ export function useSellViewModel() {
         go('home');
         return;
       }
-      if (!authed) {
+      if (cur === 1) {
+        const missing: string[] = [];
+        const chosen = sf.mineral === '__other' ? sf.customMineral || '' : sf.mineral || '';
+        if (!chosen.trim()) missing.push('mineral name');
+        if (!(parseFloat(sf.qty) > 0)) missing.push('a quantity greater than zero');
+        if (!sf.form.trim()) missing.push('a form');
+        if (missing.length) {
+          setState({
+            modal: {
+              title: 'A few details missing',
+              body: `Please enter ${missing.join(' and ')} so we can price your lot accurately.`,
+              confirmLabel: 'Got it',
+              confirm: () => setState({ modal: null }),
+            },
+          });
+          return;
+        }
+      }
+      if (cur === 2 && !sf.city.trim()) {
         setState({
           modal: {
-            title: 'Sign in to continue',
-            body: 'Please sign in to sell your minerals to Mineral Bridge.',
-            confirmLabel: 'Sign in',
-            confirm: () =>
-              setState({
-                modal: null,
-                authOpen: true,
-                authMode: 'login',
-                authStage: 'form',
-                pendingResume: 'sell',
-              }),
+            title: 'Location needed',
+            body: 'Enter the city or site where the verification team should visit you.',
+            confirmLabel: 'Got it',
+            confirm: () => setState({ modal: null }),
           },
         });
         return;
       }
       if (cur === 3) {
+        if (!authed) {
+          setState({
+            authOpen: true,
+            authMode: 'signup',
+            authStage: 'form',
+            pendingResume: 'sell',
+          });
+          return;
+        }
+        if (submitting.current) return;
         h.requireKyc(
           'submit a listing',
           () => {
@@ -139,6 +162,7 @@ export function useSellViewModel() {
               });
               return;
             }
+            submitting.current = true;
             void http
               .post('/listings', {
                 mineralId: sf.mineral === '__other' ? null : sf.mineral,
@@ -163,28 +187,14 @@ export function useSellViewModel() {
                     confirm: () => setState({ modal: null }),
                   },
                 });
+              })
+              .finally(() => {
+                submitting.current = false;
               });
           },
           'sell',
         );
         return;
-      }
-      if (cur === 1) {
-        const missing: string[] = [];
-        const chosen = sf.mineral === '__other' ? sf.customMineral || '' : sf.mineral || '';
-        if (!chosen.trim()) missing.push('mineral name');
-        if (!(parseFloat(sf.qty) > 0)) missing.push('a quantity greater than zero');
-        if (missing.length) {
-          setState({
-            modal: {
-              title: 'A few details missing',
-              body: `Please enter ${missing.join(' and ')} so we can price your lot accurately.`,
-              confirmLabel: 'Got it',
-              confirm: () => setState({ modal: null }),
-            },
-          });
-          return;
-        }
       }
       setState({ sellStep: cur + 1 });
       requestAnimationFrame(() => window.scrollTo({ top: 0 }));
@@ -206,7 +216,7 @@ export function useSellViewModel() {
       sellStep4: ss === 4,
       sellCanBack: ss > 1 && ss < 4,
       sellNextLabel:
-        ss === 3 ? 'Submit for verification' : ss === 4 ? 'Back to home' : 'Continue',
+        ss === 3 ? 'Submit' : ss === 4 ? 'Back to home' : 'Continue',
       sellSummary: [
         { k: 'Mineral', v: resolvedMineral || '—' },
         { k: 'Category', v: sf.category },
@@ -288,7 +298,7 @@ export function useSellViewModel() {
         setState((s) => ({ sellForm: { ...s.sellForm, category: e.target.value } })),
       sfQty: (e: React.ChangeEvent<HTMLInputElement>) =>
         setState((s) => ({
-          sellForm: { ...s.sellForm, qty: e.target.value.replace(/[^0-9.]/g, '') },
+          sellForm: { ...s.sellForm, qty: e.target.value.replace(/[^0-9.-]/g, '') },
         })),
       sfUnit: (e: React.ChangeEvent<HTMLSelectElement>) =>
         setState((s) => ({ sellForm: { ...s.sellForm, unit: e.target.value } })),

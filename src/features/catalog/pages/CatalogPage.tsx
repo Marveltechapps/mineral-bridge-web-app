@@ -1,138 +1,101 @@
-import { useCatalogViewModel, type BrowseCard } from '@/features/catalog/hooks/useCatalogViewModel';
-import { ArrowLeftGlyph } from '@/components/common/Glyphs';
+import { useCatalogViewModel } from '@/features/catalog/hooks/useCatalogViewModel';
+import { ProductCard } from '@/features/catalog/components/ProductCard';
 import { Breadcrumb } from '@/components/common/Breadcrumb';
 import { css } from '@/utils/css';
-import '@/features/catalog/catalogBrowse.css';
 
-function Media({ card, className }: { card: BrowseCard; className: string }) {
-  const framed = className !== 'mb-sub-thumb';
-  const image = card.imageUrl
-    ? <img className={`${className} product-image`} src={card.imageUrl} alt="" />
-    : <span className={className} style={card.background ? { background: card.background } : undefined} />;
-  if (!framed) return image;
-  return <span className="mb-frame">{image}</span>;
-}
+const SELECT =
+  'height:42px; border:1px solid #dde2f0; border-radius:11px; padding:0 12px; background:#fff; color:#141a2e; font-size:13.5px; font-weight:700;';
 
-/** Browse minerals as three screens: categories, subcategories, then product forms. */
+/** Assured-lot catalog with search, cascading filters and sort. */
 export function CatalogPage() {
   const vm = useCatalogViewModel();
 
   return (
     <div style={css('max-width:1440px; margin:0 auto; padding:32px;')}>
-      <Breadcrumb current={vm.level === 'categories' ? 'Browse minerals' : vm.title} />
-      {vm.backLabel ? (
-        <button type="button" className="mb-browse-back" onClick={vm.back}>
-          <ArrowLeftGlyph size={16} />
-          {vm.backLabel}
-        </button>
-      ) : null}
-      <div className="mb-browse-head">
+      <Breadcrumb current="Browse minerals" />
+      <div style={css('display:flex; align-items:flex-end; justify-content:space-between; gap:16px; margin-bottom:18px; flex-wrap:wrap;')}>
         <div>
-          <p className="mb-browse-kicker">{vm.context}</p>
-          <h1 className="mb-browse-title">{vm.title}</h1>
-          <p className="mb-browse-count">{vm.loading ? 'Loading…' : vm.countLabel}</p>
+          <p style={css('font-size:11px; font-weight:800; letter-spacing:.8px; color:#8890ad; margin:0 0 6px;')}>MARKETPLACE</p>
+          <h1 style={css("font-family:'Poppins'; font-size:27px; font-weight:800; color:#141a2e; margin:0; letter-spacing:-.5px;")}>
+            Browse minerals
+          </h1>
+          <p style={css('font-size:14px; color:#6b7290; margin:6px 0 0;')}>{vm.countLabel}</p>
         </div>
       </div>
 
-      {vm.level === 'items' && (
-        <label className="mb-browse-search">
-          <input
-            aria-label="Search product forms"
-            value={vm.search}
-            placeholder="Search product forms…"
-            onChange={(event) => vm.setSearch(event.target.value)}
-          />
-        </label>
-      )}
+      <label style={css('display:block; margin-bottom:14px;')}>
+        <input
+          aria-label="Search minerals"
+          value={vm.search}
+          placeholder="Search minerals…"
+          onChange={(event) => vm.setSearch(event.target.value)}
+          style={css('width:100%; max-width:480px; height:46px; border:1px solid #dde2f0; border-radius:12px; padding:0 14px; font-size:14.5px;')}
+        />
+      </label>
+
+      <div style={css('display:flex; flex-wrap:wrap; gap:10px; margin-bottom:22px;')}>
+        <select aria-label="Category" value={vm.category} onChange={(event) => vm.setCategory(event.target.value)} style={css(SELECT)}>
+          <option value="all">All</option>
+          {vm.categories.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select aria-label="Subcategory" value={vm.subcategory} onChange={(event) => vm.setSubcategory(event.target.value)} style={css(SELECT)}>
+          <option value="">All subcategories</option>
+          {vm.subcategories.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select aria-label="Mineral type" value={vm.mineralType} onChange={(event) => vm.setMineralType(event.target.value)} style={css(SELECT)}>
+          <option value="">All mineral types</option>
+          {vm.mineralTypes.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select aria-label="Form" value={vm.productForm} onChange={(event) => vm.setProductForm(event.target.value)} style={css(SELECT)}>
+          <option value="">All forms</option>
+          {vm.forms.map((option) => (
+            <option key={option.value} value={option.value}>{option.label}</option>
+          ))}
+        </select>
+        <select aria-label="Sort" value={vm.sort} onChange={(event) => vm.setSort(event.target.value)} style={css(SELECT)}>
+          <option value="featured">Featured</option>
+          <option value="price">Price</option>
+          <option value="name">Name</option>
+        </select>
+      </div>
 
       {vm.loading && (
-        <div className="mb-state" role="status">
-          <h2>Loading catalog</h2>
-          <p>Fetching categories from Mineral Bridge.</p>
+        <div role="status">
+          <h2 style={css("font-family:'Poppins'; font-size:20px;")}>Loading catalog</h2>
+          <p>Fetching assured lots from Mineral Bridge.</p>
         </div>
       )}
 
       {vm.failed && (
-        <div className="mb-state" role="alert">
-          <h2>Could not load the catalog</h2>
+        <div role="alert">
+          <h2 style={css("font-family:'Poppins'; font-size:20px;")}>Could not load the catalog</h2>
           <p>The request failed, so no minerals are shown.</p>
-          <button type="button" onClick={vm.retry}>
-            Retry
-          </button>
+          <button type="button" onClick={vm.retry}>Retry</button>
         </div>
       )}
 
-      {!vm.loading && !vm.failed && vm.level === 'categories' && (
-        <div className="mb-cat-grid">
-          {vm.cards.map((card) => (
-            <button key={card.slug} type="button" className="mb-cat v2-lift" onClick={card.open}>
-              <Media card={card} className="mb-cat-image" />
-              <span className="mb-cat-body">
-                <span className="mb-cat-name">{card.name}</span>
-                <span className="mb-cat-meta">{card.meta}</span>
-              </span>
-            </button>
+      {!vm.loading && !vm.failed && (
+        <div
+          className="v2-g3"
+          style={css('display:grid; grid-template-columns:repeat(4,1fr); gap:18px;')}
+        >
+          {vm.products.map((product) => (
+            <ProductCard key={product.id} product={product} />
           ))}
-        </div>
-      )}
-
-      {!vm.loading && !vm.failed && vm.level === 'subcategories' && (
-        <div className="mb-sub-list">
-          {vm.cards.map((card) => (
-            <button key={card.slug} type="button" className="mb-sub" onClick={card.open}>
-              <Media card={card} className="mb-sub-thumb" />
-              <span className="mb-sub-copy">
-                <span className="mb-sub-name">{card.name}</span>
-                <span className="mb-sub-meta">{card.meta}</span>
-              </span>
-              <svg className="mb-sub-chevron" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-                <polyline points="9 18 15 12 9 6" />
-              </svg>
-            </button>
-          ))}
-        </div>
-      )}
-
-      {!vm.loading && !vm.failed && vm.level === 'items' && (
-        <div className="mb-item-grid">
-          {vm.cards.map((card) => {
-            const body = (
-              <>
-                <Media card={card} className="mb-item-image" />
-                <span className="mb-item-body">
-                  <span className="mb-item-name">{card.name}</span>
-                  {card.meta ? <span className="mb-item-meta">{card.meta}</span> : null}
-                  {card.price ? (
-                    <span className="mb-item-price">
-                      {card.price}
-                      {card.unit ? ` / ${card.unit}` : ''}
-                    </span>
-                  ) : null}
-                </span>
-              </>
-            );
-            return card.open ? (
-              <button key={card.slug} type="button" className="mb-item v2-lift" onClick={card.open}>
-                {body}
-              </button>
-            ) : (
-              <article key={card.slug} className="mb-item mb-static">
-                {body}
-              </article>
-            );
-          })}
         </div>
       )}
 
       {vm.empty && (
-        <div className="mb-state">
-          <h2>{vm.emptyTitle}</h2>
-          <p>{vm.emptyBody}</p>
-          {vm.level !== 'categories' && (
-            <button type="button" onClick={vm.back}>
-              {vm.backLabel}
-            </button>
-          )}
+        <div style={css('margin-top:28px;')}>
+          <h2 style={css("font-family:'Poppins'; font-size:20px; margin:0;")}>{vm.emptyTitle}</h2>
+          <p style={css('color:#6b7290;')}>{vm.emptyBody}</p>
+          <button type="button" onClick={vm.clear}>All</button>
         </div>
       )}
     </div>

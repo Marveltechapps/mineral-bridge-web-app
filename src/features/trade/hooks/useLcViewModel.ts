@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { useTradeState } from '@/hooks/useAppState';
+import { useAccountState, useTradeState } from '@/hooks/useAppState';
+import { isApiConfigured } from '@/lib/api/config';
 import { CHIP } from '@/constants/tokens';
 import { chipStyle, formatDate, money } from '@/utils/format';
 import {
@@ -50,6 +51,8 @@ export function useLcViewModel() {
     setState,
     go,
   } = useTradeState();
+  const { accForm } = useAccountState();
+  const company = accForm.company;
   const { ct, total, disc, ok } = useLcState();
 
   return useMemo(() => {
@@ -76,7 +79,10 @@ export function useLcViewModel() {
           : CHIP.AMBER;
 
     return {
-      headline: 'LC-2026-0419 · ' + ct.lcType + ' · ' + ct.tenor + ' · ' + money(total),
+      hasLc: Boolean(ct.lot),
+      headline: ct.lot
+        ? ct.lcType + ' · ' + ct.tenor + ' · ' + money(total)
+        : 'No letter of credit is open yet',
       statusLabel: lcPaid
         ? 'PAID'
         : lcExam === 'refused'
@@ -142,15 +148,15 @@ export function useLcViewModel() {
       discTitle: disc.length + (disc.length === 1 ? ' discrepancy' : ' discrepancies') + ' found',
       refused: lcExam === 'refused',
       details: [
-        { k: 'LC number', v: 'LC-2026-0419' },
-        { k: 'Applicant', v: 'Marvel Trading Co.' },
+        { k: 'LC number', v: isApiConfigured() ? 'Not issued yet' : 'LC-2026-0419' },
+        { k: 'Applicant', v: company.trim() || (isApiConfigured() ? 'Your account' : 'Marvel Trading Co.') },
         { k: 'Beneficiary', v: ct.seller },
-        { k: 'Issuing bank', v: ct.bank },
-        { k: 'Advising bank', v: 'Ghana Commercial Bank' },
+        { k: 'Issuing bank', v: ct.bank || '—' },
+        { k: 'Advising bank', v: isApiConfigured() ? '—' : 'Ghana Commercial Bank' },
         { k: 'Amount', v: money(total) },
         { k: 'Incoterm', v: ct.incoterm + ' ' + ct.port },
-        { k: 'Latest shipment', v: formatDate(ct.to) },
-        { k: 'Expiry', v: '05 Nov 2026' },
+        { k: 'Latest shipment', v: ct.to ? formatDate(ct.to) : '—' },
+        { k: 'Expiry', v: isApiConfigured() ? '—' : '05 Nov 2026' },
         { k: 'Presentation', v: (ct.presentation || '—') + ' days' },
       ],
       presentBlocked: !canPresent,
@@ -202,6 +208,7 @@ export function useLcViewModel() {
     total,
     disc,
     ok,
+    accForm.company,
     setState,
     go,
   ]);

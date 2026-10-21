@@ -124,7 +124,21 @@ export function useProductViewModel() {
     const settle = {
       isBtc: payMethod === 'btc',
       isLc: payMethod === 'lc',
-      openLc: () => go('contract'),
+      openLc: () => {
+        setState((s) => ({
+          ctSigned: false,
+          ctFor: null,
+          ct: {
+            ...s.ct,
+            seller: ap.seller || 'Mineral Bridge',
+            lot: ap.name,
+            price: String(num(ap.price) || ''),
+            qty: String(qty || 0),
+            unit: ap.unit || s.ct.unit,
+          },
+        }));
+        go('contract');
+      },
       opts: PAYS.map(([k, t, s, tag]) => {
         const on = payMethod === k;
         return {
@@ -165,7 +179,7 @@ export function useProductViewModel() {
             authOpen: true,
             authMode: 'login',
             authStage: 'form',
-            pendingResume: 'orders',
+            pendingResume: 'product',
           });
           return;
         }

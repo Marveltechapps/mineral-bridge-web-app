@@ -420,6 +420,35 @@ reproduces the existing branch in `verifyOtp`: a new sign-up with
 
 Failure: 5 wrong codes invalidates the challenge → `auth/otp-expired`.
 
+### Development login — `NODE_ENV=development` only
+
+These routes exist only for a local developer. They are rejected with `404 auth/dev-login-disabled` in production, in test, and whenever `DEV_LOGIN_ENABLED` is not true. The client shows the option only after `GET /auth/dev-login` returns `{ enabled: true }`. A role or `isAdmin` field in the body is ignored.
+
+```ts
+// GET /auth/dev-login
+{ enabled: false }
+// or
+{ enabled: true, codeLength: 6 }
+
+// POST /auth/dev-login
+{ email: string; password: string }
+// 200
+{
+  challengeId: string;
+  expiresIn: number;
+  codeLength: 6;
+  developmentOtp: string; // present only on this development response
+}
+
+// POST /auth/dev-login/verify
+{ challengeId: string; code: string; rememberDevice?: boolean }
+// 200 — same session body as POST /auth/otp/verify, and the refresh cookie
+```
+
+Wrong codes use the existing web OTP errors (`auth/otp-incorrect`, `auth/otp-expired`). Too many password attempts return `429 auth/dev-login-rate-limited`. Application credentials cannot become an admin session.
+
+`POST /auth/register`, `POST /auth/otp/request` and `POST /auth/otp/resend` include `developmentOtp` only when `NODE_ENV=development` and `DEV_OTP_ENABLED=true`. That flag is separate from `DEV_LOGIN_ENABLED`. Production omits the field and sends the code through the configured email or SMS provider. The account is still created only after `POST /auth/otp/verify`.
+
 ### `POST /auth/refresh` — refresh cookie only
 
 ```ts

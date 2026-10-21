@@ -60,6 +60,7 @@ export function useAcademyViewModel() {
     enabled: api,
   });
   const source = api ? (coursesQuery.data ?? EMPTY_COURSES) : COURSES;
+  const coursesLoading = api && coursesQuery.isLoading;
 
   return useMemo(() => {
     const courses = source.filter((c) => api || c.track === acTrack).map((c) => {
@@ -148,6 +149,7 @@ export function useAcademyViewModel() {
             { value: '6', label: 'Languages' },
           ],
       courses,
+      coursesEmpty: !coursesLoading && courses.length === 0,
       course,
       playing: playing,
       playPos: playing ? '42%' : '0%',
@@ -184,5 +186,6 @@ export function useAcademyViewModel() {
     go,
     source,
     api,
+    coursesLoading,
   ]);
 }

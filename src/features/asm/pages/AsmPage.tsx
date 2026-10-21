@@ -210,7 +210,7 @@ export function AsmPage() {
                       Coordinates captured
                     </div>
                     <div style={css('font-size:12px; color:#6b7290; margin-top:2px;')}>
-                      {asm.coords} · accuracy ±4 m
+                      {asm.coords}
                     </div>
                   </div>
                 </>
@@ -240,6 +240,11 @@ export function AsmPage() {
                 </div>
               )}
             </div>
+            {asm.gpsError ? (
+              <p role="alert" style={css('margin:14px 0 0; color:#9b2335; font-size:13.5px; line-height:1.45;')}>
+                {asm.gpsError}
+              </p>
+            ) : null}
             <button
               onClick={vm.asmGpsToggle}
               style={css(

@@ -3,7 +3,7 @@ import { css } from '@/utils/css';
 import logo from '@/assets/images/mb-logo.png';
 import type { RouteKey } from '@/types';
 
-type FooterLink = { label: string; r: RouteKey | '__auth' };
+type FooterLink = { label: string; r: RouteKey | '__auth'; accountTab?: string; hash?: string };
 
 const FOOTER_COLS: { title: string; links: FooterLink[] }[] = [
   {
@@ -26,8 +26,8 @@ const FOOTER_COLS: { title: string; links: FooterLink[] }[] = [
     title: 'COMPANY',
     links: [
       { label: 'How it works', r: 'howItWorks' },
-      { label: 'Compliance', r: 'home' },
-      { label: 'Support', r: 'account' },
+      { label: 'Compliance', r: 'home', hash: 'compliance' },
+      { label: 'Support', r: 'account', accountTab: 'support' },
     ],
   },
 ];
@@ -36,10 +36,31 @@ const FOOTER_COLS: { title: string; links: FooterLink[] }[] = [
 export function Footer() {
   const { setState, go } = useAppActions();
 
-  const follow = (r: FooterLink['r']) => () =>
-    r === '__auth'
-      ? setState({ authOpen: true, authMode: 'login', authStage: 'form' })
-      : go(r);
+  const follow = (link: FooterLink) => () => {
+    if (link.r === '__auth') {
+      setState({ authOpen: true, authMode: 'login', authStage: 'form' });
+      return;
+    }
+    if (link.accountTab) setState({ accountTab: link.accountTab });
+    go(link.r, link.hash);
+    if (link.hash) {
+      const id = link.hash;
+      const align = () => {
+        const node = document.getElementById(id);
+        if (!node) return false;
+        const top = node.getBoundingClientRect().top + window.scrollY;
+        window.scrollTo({ top, behavior: 'auto' });
+        return Math.abs(node.getBoundingClientRect().top) < 8;
+      };
+      let tries = 0;
+      const attempt = () => {
+        if (align() || tries >= 10) return;
+        tries += 1;
+        window.setTimeout(attempt, 50);
+      };
+      requestAnimationFrame(() => requestAnimationFrame(attempt));
+    }
+  };
 
   return (
     <footer style={css('background:#141a2e; color:rgba(255,255,255,.62); margin-top:auto;')}>
@@ -83,7 +104,7 @@ export function Footer() {
               {col.links.map((l) => (
                 <button
                   key={l.label}
-                  onClick={follow(l.r)}
+                  onClick={follow(l)}
                   style={css(
                     'background:none; border:none; padding:0; text-align:left; font-size:13px; color:rgba(255,255,255,.62); cursor:pointer;',
                   )}

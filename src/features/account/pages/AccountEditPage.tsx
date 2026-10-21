@@ -1,5 +1,4 @@
 import { useAccountEditViewModel } from '@/features/account/hooks/useAccountEditViewModel';
-import { useActions } from '@/hooks/useActions';
 import { css } from '@/utils/css';
 
 const Tick = ({ size = 13, stroke = '#fff', width = 3.4 }) => (
@@ -46,7 +45,6 @@ const LockNote = ({ children }: { children: React.ReactNode }) => (
 /** Account edit sheets: profile, document upload, payout, password and sessions. */
 export function AccountEditPage() {
   const vm = useAccountEditViewModel();
-  const h = useActions();
   const { acc } = vm;
 
   return (
@@ -58,7 +56,7 @@ export function AccountEditPage() {
         )}
       >
         <button
-          onClick={h.goAccount}
+          onClick={vm.discard}
           style={css(
             'background:none; border:none; padding:0; font-size:13px; color:#5b638a; cursor:pointer;',
           )}
@@ -486,7 +484,7 @@ export function AccountEditPage() {
 
       <div style={css('display:flex; gap:12px; margin-top:24px;')}>
         <button
-          onClick={h.goAccount}
+          onClick={vm.discard}
           style={css(
             'height:54px; padding:0 24px; border:1px solid #d5dbef; border-radius:13px; background:#fff; color:#1e2a5a; font-size:15px; font-weight:800; cursor:pointer;',
           )}

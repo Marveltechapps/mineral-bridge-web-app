@@ -39,7 +39,7 @@ export function useActions() {
       if (kycStatus === 'pending') {
         setState({
           modal: {
-            title: 'Verification still under review',
+            title: 'Still under review',
             body: `Your documents are with our compliance desk. You can browse freely, but you can only ${what} once verification is approved — usually within 24 hours.`,
             confirmLabel: 'View status',
             confirm: () => {
@@ -78,7 +78,7 @@ export function useActions() {
       closeModal,
       goHome: () => go('home'),
       goBuy: () => {
-        setState({ homeFilter: 'all', subcategory: '', mineralType: '', productForm: '', query: '' });
+        setState({ homeFilter: 'all', subcategory: '', mineralType: '', productForm: '', query: '', sort: 'featured' });
         go('buy');
       },
       goSell: () => go('sell'),
@@ -97,6 +97,20 @@ export function useActions() {
       closeHiw: () => {
         markHiwSeen();
         setState({ hiwOverlay: false, hiwPlaying: false });
+      },
+      exploreMarketplace: () => {
+        markHiwSeen();
+        setState({
+          hiwOverlay: false,
+          hiwPlaying: false,
+          homeFilter: 'all',
+          subcategory: '',
+          mineralType: '',
+          productForm: '',
+          query: '',
+          sort: 'featured',
+        });
+        go('buy');
       },
       hiwFullPage: () => {
         markHiwSeen();

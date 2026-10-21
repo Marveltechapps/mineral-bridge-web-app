@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { useTradeState } from '@/hooks/useAppState';
+import { useSessionState, useTradeState } from '@/hooks/useAppState';
+import { isApiConfigured } from '@/lib/api/config';
 import { CHIP } from '@/constants/tokens';
 import { chipStyle, money } from '@/utils/format';
 import { BASE_MESSAGES, CONVS, stepDot, tradeBtn } from '@/features/trade/constants';
@@ -27,13 +28,30 @@ export function useNegotiationViewModel() {
     setState,
     go,
   } = useTradeState();
+  const { authed } = useSessionState();
+  const api = isApiConfigured();
 
   return useMemo(() => {
+    const conversations = api ? [] : CONVS;
+    const seeded = api ? {} : BASE_MESSAGES;
     const all = (id: string): NegotiationMessage[] =>
-      (BASE_MESSAGES[id] || []).concat(negExtra[id] || []);
+      (seeded[id] || []).concat(negExtra[id] || []);
 
     const cid = negId;
-    const conv = CONVS.find((c) => c.id === cid) || CONVS[0];
+    const conv = conversations.find((c) => c.id === cid) || conversations[0];
+    if (!conv) {
+      return {
+        empty: true as const,
+        needsSignIn: !authed,
+        signIn: () =>
+          setState({
+            authOpen: true,
+            authMode: 'login',
+            authStage: 'form',
+            pendingResume: 'negotiation',
+          }),
+      };
+    }
     const raw = all(cid);
     const accId = negAccepted[cid];
 
@@ -171,10 +189,11 @@ export function useNegotiationViewModel() {
     const firstOpen = stp.findIndex((x) => !x[1]);
 
     return {
+      empty: false as const,
       conv,
       draft: negDraft,
       msgs,
-      convs: CONVS.map((c) => {
+      convs: conversations.map((c) => {
         const on = c.id === cid;
         const s = statusOf(c.id);
         const cc = statusChip(s);
@@ -195,11 +214,29 @@ export function useNegotiationViewModel() {
       send: () => {
         const t = (negDraft || '').trim();
         if (!t) return;
+        if (api && !authed) {
+          setState({
+            authOpen: true,
+            authMode: 'login',
+            authStage: 'form',
+            pendingResume: 'negotiation',
+          });
+          return;
+        }
         setState({ negDraft: '' });
         push({ k: 'text', who: 'me', text: t, time: 'Now' });
       },
       offerBlocked: !theirOpen,
       makeOffer: () => {
+        if (api && !authed) {
+          setState({
+            authOpen: true,
+            authMode: 'login',
+            authStage: 'form',
+            pendingResume: 'negotiation',
+          });
+          return;
+        }
         if (theirOpen) counter(theirOpen);
       },
       offerStyle:
@@ -279,5 +316,7 @@ export function useNegotiationViewModel() {
     lcStatus,
     setState,
     go,
+    api,
+    authed,
   ]);
 }

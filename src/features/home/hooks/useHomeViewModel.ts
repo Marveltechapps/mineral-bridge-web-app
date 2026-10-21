@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useCatalogState } from '@/hooks/useAppState';
 import { isApiConfigured } from '@/lib/api/config';
 import { BUY_STAGES, CATS, PRODUCTS, SELL_STAGES } from '@/constants/catalog';
-import { catalogKeys, displayImageUrl, getCategories, getLots, getMarketStats } from '@/features/catalog/services/catalogService';
+import { catalogKeys, displayImageUrl, getCategories, getHierarchy, getLots, getMarketStats } from '@/features/catalog/services/catalogService';
 import type { Product } from '@/types';
 
 const EMPTY_PRODUCTS: Product[] = [];
@@ -34,6 +34,11 @@ export function useHomeViewModel() {
   const statsQuery = useQuery({
     queryKey: ['market', 'stats'],
     queryFn: ({ signal }) => getMarketStats(signal),
+    enabled: api,
+  });
+  const hierarchyQuery = useQuery({
+    queryKey: ['reference', 'hierarchy'],
+    queryFn: ({ signal }) => getHierarchy(signal),
     enabled: api,
   });
   const products = api ? (lotsQuery.data?.items ?? EMPTY_PRODUCTS) : PRODUCTS;
@@ -83,15 +88,22 @@ export function useHomeViewModel() {
       { title: 'On-chain provenance', sub: 'Immutable audit trail', ic: 'chain' },
     ] as const;
 
-    const homeCats = sourceCats.map((c) => ({
+    const homeCats = sourceCats.map((c) => {
+      const row = (hierarchyQuery.data ?? []).find((category) => category.slug === c.key);
+      const fromHierarchy = row?.subcategories.reduce((sum, sub) => sum + sub.mineralTypes.length, 0) ?? 0;
+      const fromLots = new Set(
+        products.filter((product) => product.catKey === c.key && product.mineralType).map((product) => product.mineralType),
+      ).size;
+      return {
       name: c.name,
       grad: products.find((p) => p.catKey === c.key && p.grad.includes('url('))?.grad || c.grad,
-      count: c.types.length,
+      count: fromHierarchy || fromLots || c.types.length,
       open: () => {
         setState({ homeFilter: c.key, subcategory: '', mineralType: '', productForm: '' });
         go('buy');
       },
-    }));
+    };
+    });
 
     const homeFilters = [{ key: 'all', label: 'All' }]
       .concat(
@@ -191,5 +203,5 @@ export function useHomeViewModel() {
       sellPerks,
       pipelines,
     };
-  }, [homeFilter, subcategory, query, setState, go, products, sourceCats, api, loading, failed, statsQuery.data, lotsQuery, catsQuery]);
+  }, [homeFilter, subcategory, query, setState, go, products, sourceCats, api, loading, failed, statsQuery.data, hierarchyQuery.data, lotsQuery, catsQuery]);
 }

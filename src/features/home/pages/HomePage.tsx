@@ -158,7 +158,12 @@ export function HomePage() {
       </section>
 
       {/* trust strip */}
-      <section style={css('background:#fff; border-bottom:1px solid #e7eaf3;')}>
+      <section id="compliance" style={css('background:#fff; border-bottom:1px solid #e7eaf3;')}>
+        <div style={css('max-width:1440px; margin:0 auto; padding:22px 32px 0;')}>
+          <h2 style={css("font-family:'Poppins'; font-size:18px; font-weight:800; color:#141a2e; margin:0;")}>
+            Compliance
+          </h2>
+        </div>
         <div
           className="v2-g4"
           style={css(
@@ -233,7 +238,7 @@ export function HomePage() {
                     'display:block; font-size:11.5px; color:rgba(255,255,255,.72); margin-top:3px;',
                   )}
                 >
-                  {c.count} types
+                  {c.count === 1 ? '1 type' : `${c.count} types`}
                 </span>
               </span>
             </button>

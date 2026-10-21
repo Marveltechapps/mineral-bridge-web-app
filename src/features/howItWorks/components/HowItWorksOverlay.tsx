@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useHowItWorksViewModel } from '@/features/howItWorks/hooks/useHowItWorksViewModel';
 import { useActions } from '@/hooks/useActions';
 import { Icon } from '@/components/common/Icon';
@@ -7,6 +8,15 @@ import { css } from '@/utils/css';
 export function HowItWorksOverlay() {
   const { hiw, hiwTopics, overlayOpen } = useHowItWorksViewModel();
   const h = useActions();
+
+  useEffect(() => {
+    if (!overlayOpen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') h.closeHiw();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [overlayOpen, h]);
 
   if (!overlayOpen) return null;
 
@@ -199,7 +209,7 @@ export function HowItWorksOverlay() {
           <div style={css('display:flex; gap:12px; margin-top:24px; flex-wrap:wrap;')}>
             <button
               className="v2-btn"
-              onClick={h.closeHiw}
+              onClick={h.exploreMarketplace}
               style={css(
                 'flex:1; min-width:200px; height:54px; border:none; border-radius:14px; background:#1e2a5a; color:#fff; font-size:15.5px; font-weight:800; cursor:pointer;',
               )}

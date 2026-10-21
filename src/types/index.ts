@@ -190,12 +190,16 @@ export interface ModalSpec {
   hasSecondary?: boolean;
   secondaryLabel?: string;
   secondary?: () => void;
+  /** When set, the confirm button stays disabled until the field matches this text. */
+  promptLabel?: string;
+  promptPlaceholder?: string;
+  promptMatch?: string;
 }
 
 export type KycStage = 'why' | 'type' | 'capture' | 'live' | 'review' | 'pending';
 export type KycStatus = 'unverified' | 'pending' | 'verified';
 export type AsmStep = 'elig' | 'site' | 'gps' | 'docs' | 'done';
-export type AuthStage = 'form' | 'otp';
+export type AuthStage = 'form' | 'verify-method' | 'otp';
 export type AuthMode = 'login' | 'signup';
 export type AuthMethod = 'mobile' | 'email' | 'whatsapp';
 export type SortKey = 'featured' | 'low' | 'high' | 'name';

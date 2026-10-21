@@ -160,6 +160,12 @@ export function AcademyPage() {
             </div>
           ))}
         </div>
+        {vm.coursesEmpty && (
+          <div>
+            <h2 style={css("font-family:'Poppins'; font-size:20px; margin:8px 0 0;")}>No courses in this topic</h2>
+            <p style={css('color:#6b7290;')}>Courses appear here once they are published.</p>
+          </div>
+        )}
       </section>
       <div style={css('height:64px;')} />
     </div>

@@ -35,7 +35,11 @@ export function useSessionSync(setState: (patch: StatePatch) => void): void {
     if (!isApiConfigured()) return;
     let cancelled = false;
     void restoreSession().then(async (ok) => {
-      if (cancelled || !ok) return;
+      if (cancelled) return;
+      if (!ok) {
+        setState({ sessionReady: true });
+        return;
+      }
       try {
         const me = await http.get<{
           kycStatus?: 'unverified' | 'pending' | 'verified' | 'rejected';
@@ -44,6 +48,7 @@ export function useSessionSync(setState: (patch: StatePatch) => void): void {
         if (cancelled) return;
         const kycStatus = me.kycStatus === 'pending' || me.kycStatus === 'verified' ? me.kycStatus : 'unverified';
         setState((previous) => ({
+          sessionReady: true,
           authed: true,
           kycStatus,
           accForm: {
@@ -52,11 +57,11 @@ export function useSessionSync(setState: (patch: StatePatch) => void): void {
             email: me.user?.email || previous.accForm.email,
             mobile: me.user?.mobile || previous.accForm.mobile,
             country: me.user?.countryName || previous.accForm.country,
-            company: me.user?.companyName || previous.accForm.company,
+            company: me.user?.companyName ?? '',
           },
         }));
       } catch {
-        if (!cancelled) setState({ authed: true });
+        if (!cancelled) setState({ sessionReady: true, authed: true });
       }
     });
     return () => {

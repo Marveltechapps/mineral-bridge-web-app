@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAccountState, useSessionState } from '@/hooks/useAppState';
 import { FIELD } from '@/constants/tokens';
@@ -63,6 +63,8 @@ export function useAccountEditViewModel() {
     setState,
     go,
   } = useAccountState();
+  const baseline = useRef<typeof accForm | null>(null);
+  if (!baseline.current) baseline.current = { ...accForm };
   const { authed } = useSessionState();
   const api = isApiConfigured();
   const client = useQueryClient();
@@ -349,6 +351,10 @@ export function useAccountEditViewModel() {
             },
           },
         });
+      },
+      discard: () => {
+        if (baseline.current) setState({ accForm: { ...baseline.current, pw: '' } });
+        go('account');
       },
     };
   }, [

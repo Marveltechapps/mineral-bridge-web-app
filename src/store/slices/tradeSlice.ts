@@ -1,3 +1,4 @@
+import { isApiConfigured } from '@/lib/api/config';
 import type { ContractTerms, NegotiationMessage } from '@/types';
 
 /**
@@ -38,31 +39,52 @@ export interface TradeSlice {
   bankTab: 'apps' | 'exam';
 }
 
+const demoContract: ContractTerms = {
+  seller: 'Ashanti Refining Co.',
+  lot: 'Gold Concentrate · 2.4 kg',
+  incoterm: 'CIF',
+  port: 'Durban',
+  price: '2360',
+  qty: '77',
+  unit: 'oz',
+  from: '2026-10-01',
+  to: '2026-10-15',
+  lcType: 'Irrevocable',
+  tenor: 'At sight',
+  bank: 'Standard Bank of South Africa',
+  presentation: '21',
+};
+
+/** Blank desk used when a real API is configured, so sample trades are not shown. */
+const blankContract: ContractTerms = {
+  seller: '',
+  lot: '',
+  incoterm: 'CIF',
+  port: '',
+  price: '',
+  qty: '',
+  unit: 'MT',
+  from: '',
+  to: '',
+  lcType: 'Irrevocable',
+  tenor: 'At sight',
+  bank: '',
+  presentation: '21',
+};
+
+const liveApi = isApiConfigured();
+
 export const tradeInitial: TradeSlice = {
-  negId: 'c1',
+  negId: liveApi ? '' : 'c1',
   negExtra: {},
   negDraft: '',
-  negAccepted: { c3: 'o9' },
+  negAccepted: liveApi ? {} : { c3: 'o9' },
   negCountered: {},
-  ct: {
-    seller: 'Ashanti Refining Co.',
-    lot: 'Gold Concentrate · 2.4 kg',
-    incoterm: 'CIF',
-    port: 'Durban',
-    price: '2360',
-    qty: '77',
-    unit: 'oz',
-    from: '2026-10-01',
-    to: '2026-10-15',
-    lcType: 'Irrevocable',
-    tenor: 'At sight',
-    bank: 'Standard Bank of South Africa',
-    presentation: '21',
-  },
+  ct: liveApi ? blankContract : demoContract,
   ctSigned: false,
   ctFor: null,
-  lcStatus: 'Advised',
-  lcDocs: { invoice: true, bl: true, packing: true, origin: true },
+  lcStatus: liveApi ? 'Applied' : 'Advised',
+  lcDocs: liveApi ? {} : { invoice: true, bl: true, packing: true, origin: true },
   lcBLDate: 'ontime',
   lcCheck: false,
   lcPresented: false,

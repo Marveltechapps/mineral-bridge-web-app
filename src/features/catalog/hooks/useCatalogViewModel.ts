@@ -3,21 +3,30 @@ import { useQuery } from '@tanstack/react-query';
 import { useCatalogState } from '@/hooks/useAppState';
 import { isApiConfigured } from '@/lib/api/config';
 import { CATS, PRODUCTS } from '@/constants/catalog';
-import {
-  backBrowse,
-  browseLevel,
-  formsUnderSubcategory,
-  openCategory,
-  openSubcategory,
-  subcategoriesFor,
-  type BrowseLevel,
-  type HierarchyCategory,
-} from '@/features/catalog/hierarchySelection';
-import { catalogKeys, displayImageUrl, getHierarchy, getLots } from '@/features/catalog/services/catalogService';
-import type { Product } from '@/types';
+import { catalogKeys, getHierarchy, getLots, type HierarchyCategory } from '@/features/catalog/services/catalogService';
+import type { Product, SortKey } from '@/types';
 
 const EMPTY_PRODUCTS: Product[] = [];
 const EMPTY_HIERARCHY: HierarchyCategory[] = [];
+
+export interface FilterOption {
+  value: string;
+  label: string;
+}
+
+function uniqueOptions(options: FilterOption[]): FilterOption[] {
+  const seen = new Set<string>();
+  return options.filter((option) => {
+    if (seen.has(option.value)) return false;
+    seen.add(option.value);
+    return true;
+  });
+}
+
+function priceAmount(price: string): number {
+  const amount = Number(price.replace(/[^0-9.]/g, ''));
+  return Number.isFinite(amount) ? amount : 0;
+}
 
 function fixtureHierarchy(): HierarchyCategory[] {
   return CATS.map((category) => ({
@@ -28,169 +37,160 @@ function fixtureHierarchy(): HierarchyCategory[] {
       slug: name,
       name,
       imageUrl: null,
-      mineralTypes: [
-        {
-          slug: name,
-          name,
+      mineralTypes: (category.types.includes(name) ? [name] : category.types).slice(0, 1).map((type) => ({
+        slug: type,
+        name: type,
+        imageUrl: null,
+        productForms: PRODUCTS.filter((product) => product.catKey === category.key && product.subCategory === name).map((product) => ({
+          slug: product.id,
+          name: product.name,
           imageUrl: null,
-          productForms: PRODUCTS.filter((product) => product.catKey === category.key && product.subCategory === name).map((product) => ({
-            slug: product.id,
-            name: product.name,
-            imageUrl: null,
-          })),
-        },
-      ],
+        })),
+      })),
     })),
   }));
 }
 
-export interface BrowseCard {
-  slug: string;
-  name: string;
-  meta: string;
-  imageUrl?: string | null;
-  background?: string;
-  price?: string;
-  unit?: string;
-  open?: () => void;
-}
-
-/** Three-level catalog: categories, then subcategories, then product forms. */
+/** Filterable assured-lot catalog: search, four filters and sort. */
 export function useCatalogViewModel() {
-  const { homeFilter, subcategory, mineralType, productForm, query, setState, go } = useCatalogState();
+  const { homeFilter, subcategory, mineralType, productForm, query, sort, setState, go } = useCatalogState();
   const api = isApiConfigured();
-  const level: BrowseLevel = browseLevel({ homeFilter, subcategory });
   const lotsQuery = useQuery({
-    queryKey: catalogKeys.lots({ category: homeFilter, subcategory, perPage: 100 }),
-    queryFn: ({ signal }) => getLots({ category: homeFilter, subcategory, perPage: 100 }, signal),
-    enabled: api && level === 'items',
+    queryKey: catalogKeys.lots({ perPage: 100 }),
+    queryFn: ({ signal }) => getLots({ perPage: 100 }, signal),
+    enabled: api,
   });
   const hierarchyQuery = useQuery({
     queryKey: ['reference', 'hierarchy'],
     queryFn: ({ signal }) => getHierarchy(signal),
     enabled: api,
   });
-  const hierarchy: HierarchyCategory[] = api ? (hierarchyQuery.data ?? EMPTY_HIERARCHY) : fixtureHierarchy();
+  const hierarchy = api ? (hierarchyQuery.data ?? EMPTY_HIERARCHY) : fixtureHierarchy();
   const products = api ? (lotsQuery.data?.items ?? EMPTY_PRODUCTS) : PRODUCTS;
-  const loading = api && hierarchyQuery.isLoading;
-  const failed = api && hierarchyQuery.isError;
-  const itemsFailed = api && level === 'items' && lotsQuery.isError && hierarchyQuery.isSuccess && formsUnderSubcategory(hierarchy, homeFilter, subcategory).length === 0;
+  const loading = api && (lotsQuery.isLoading || hierarchyQuery.isLoading);
+  const failed = api && (lotsQuery.isError || hierarchyQuery.isError);
 
   return useMemo(() => {
+    const categories: FilterOption[] = hierarchy.map((row) => ({ value: row.slug, label: row.name }));
     const category = hierarchy.find((row) => row.slug === homeFilter);
-    const subs = subcategoriesFor(hierarchy, homeFilter);
-    const subcategoryRow = subs.find((row) => row.slug === subcategory);
-    const forms = formsUnderSubcategory(hierarchy, homeFilter, subcategory);
+    const subcategoryRows = category ? category.subcategories : hierarchy.flatMap((row) => row.subcategories);
+    const subcategories: FilterOption[] = uniqueOptions(subcategoryRows.map((row) => ({ value: row.slug, label: row.name })));
+    const typeRows = (subcategory
+      ? subcategoryRows.filter((row) => row.slug === subcategory)
+      : subcategoryRows
+    ).flatMap((row) => row.mineralTypes);
+    const mineralTypes: FilterOption[] = uniqueOptions(typeRows.map((row) => ({ value: row.slug, label: row.name })));
+    const formRows = (mineralType
+      ? typeRows.filter((row) => row.slug === mineralType)
+      : typeRows
+    ).flatMap((row) => row.productForms);
+    const forms: FilterOption[] = uniqueOptions(formRows.map((row) => ({ value: row.slug, label: row.name })));
+    const selectedForm = forms.find((row) => row.value === productForm)?.label ?? '';
+
     const q = query.trim().toLowerCase();
-    const backgroundFor = (slug: string, kind: 'category' | 'item') => {
-      if (api) return undefined;
-      if (kind === 'category') return CATS.find((row) => row.key === slug)?.grad;
-      return PRODUCTS.find((row) => row.id === slug)?.grad;
-    };
-
-    const firstImage = (urls: Array<string | null | undefined>) => {
-      for (const url of urls) {
-        const next = displayImageUrl(url);
-        if (next) return next;
+    const filtered = products.filter((product) => {
+      if (homeFilter !== 'all' && product.catKey !== homeFilter && product.category !== homeFilter) return false;
+      if (subcategory && product.subcategorySlug !== subcategory && product.subCategory !== subcategory) return false;
+      if (mineralType && product.mineralTypeSlug !== mineralType && product.mineralType !== mineralType && product.subCategory !== mineralType) return false;
+      if (
+        productForm &&
+        product.productFormSlug !== productForm &&
+        product.productForm !== productForm &&
+        product.productForm !== selectedForm &&
+        product.id !== productForm &&
+        product.name !== productForm &&
+        product.name !== selectedForm
+      ) {
+        return false;
       }
-      return undefined;
-    };
+      if (q && !product.name.toLowerCase().includes(q) && !product.category.toLowerCase().includes(q)) return false;
+      return true;
+    });
+    const sorted = [...filtered].sort((a, b) => {
+      if (sort === 'name') return a.name.localeCompare(b.name);
+      if (sort === 'low' || sort === 'high') {
+        const delta = priceAmount(a.price) - priceAmount(b.price);
+        return sort === 'high' ? -delta : delta;
+      }
+      return 0;
+    });
 
-    const cards: BrowseCard[] =
-      level === 'categories'
-        ? hierarchy.map((row) => ({
-            slug: row.slug,
-            name: row.name,
-            meta: `${row.subcategories.length} subcategories`,
-            imageUrl: firstImage([
-              row.imageUrl,
-              ...row.subcategories.flatMap((sub) => [
-                sub.imageUrl,
-                ...sub.mineralTypes.flatMap((type) => type.productForms.map((form) => form.imageUrl)),
-              ]),
-            ]),
-            background: backgroundFor(row.slug, 'category'),
-            open: () => setState({ ...openCategory(row.slug), query: '' }),
-          }))
-        : level === 'subcategories'
-          ? subs.map((row) => ({
-              slug: row.slug,
-              name: row.name,
-              meta: `${row.mineralTypes.reduce((count, type) => count + type.productForms.length, 0)} product forms`,
-              imageUrl: firstImage([
-                row.imageUrl,
-                ...row.mineralTypes.flatMap((type) => type.productForms.map((form) => form.imageUrl)),
-              ]),
-              open: () => setState({ ...openSubcategory({ homeFilter, subcategory, mineralType, productForm }, row.slug), query: '' }),
-            }))
-          : forms
-              .filter((form) => !q || form.name.toLowerCase().includes(q))
-              .map((form) => {
-                const lot = products.find((product) => product.productFormSlug === form.slug || product.id === form.slug || product.name === form.name);
-                const imageUrl = displayImageUrl(form.imageUrl) || displayImageUrl(lot?.imageUrl);
-                return {
-                  slug: form.slug,
-                  name: form.name,
-                  meta: lot?.grade || '',
-                  imageUrl,
-                  background: imageUrl ? undefined : backgroundFor(form.slug, 'item') || lot?.grad,
-                  price: lot?.price,
-                  unit: lot?.unit,
-                  open: lot
-                    ? () => {
-                        setState({ activeId: lot.id, qty: 10 });
-                        go('product');
-                      }
-                    : undefined,
-                };
-              });
-
-    const title =
-      level === 'categories' ? 'Browse by category' : level === 'subcategories' ? category?.name || 'Subcategories' : subcategoryRow?.name || 'Product forms';
-    const context =
-      level === 'items' && category ? category.name : level === 'subcategories' ? 'Subcategories' : 'Choose a category';
+    const clear = () =>
+      setState({
+        homeFilter: 'all',
+        subcategory: '',
+        mineralType: '',
+        productForm: '',
+        query: '',
+        sort: 'featured' as SortKey,
+      });
 
     return {
-      level,
-      title,
-      context,
-      countLabel:
-        level === 'categories'
-          ? `${hierarchy.length} categories`
-          : level === 'subcategories'
-            ? `${subs.length} subcategories`
-            : `${cards.length} product forms`,
-      backLabel: level === 'items' ? 'Subcategories' : level === 'subcategories' ? 'Categories' : '',
-      back: () => setState({ ...backBrowse({ homeFilter, subcategory, mineralType, productForm }), query: '' }),
-      cards,
+      loading,
+      failed,
       search: query,
       setSearch: (value: string) => setState({ query: value }),
-      loading,
-      failed: failed || itemsFailed,
-      empty: !loading && !(failed || itemsFailed) && cards.length === 0,
-      emptyTitle: level === 'items' && q ? 'No product forms match that search' : level === 'items' ? 'No product forms for this subcategory' : 'Nothing is published under this selection',
-      emptyBody: level === 'items' && q ? 'Try a different name from this subcategory.' : level === 'items' ? 'This subcategory has no product forms in the catalog.' : 'Choose another category to continue.',
+      category: homeFilter,
+      subcategory,
+      mineralType,
+      productForm,
+      sort: sort === 'low' || sort === 'high' ? 'price' : sort,
+      categories,
+      subcategories,
+      mineralTypes,
+      forms,
+      setCategory: (value: string) =>
+        setState({ homeFilter: value || 'all', subcategory: '', mineralType: '', productForm: '' }),
+      setSubcategory: (value: string) => setState({ subcategory: value, mineralType: '', productForm: '' }),
+      setMineralType: (value: string) => setState({ mineralType: value, productForm: '' }),
+      setProductForm: (value: string) => setState({ productForm: value }),
+      setSort: (value: string) => setState({ sort: value === 'price' ? 'low' : value === 'name' ? 'name' : 'featured' }),
+      countLabel: loading
+        ? 'Loading…'
+        : `${sorted.length} assured ${sorted.length === 1 ? 'lot' : 'lots'}`,
+      products: sorted.map((product) => ({
+        id: product.id,
+        name: product.name,
+        category: product.category,
+        subCategory: product.subCategory || product.category,
+        grade: product.grade,
+        region: product.region,
+        price: product.price,
+        unit: product.unit,
+        stock: product.stock,
+        grad: product.grad,
+        open: () => {
+          setState({ activeId: product.id, qty: 10 });
+          go('product');
+        },
+        buy: () => {
+          setState({ activeId: product.id, qty: 10 });
+          go('product');
+        },
+      })),
+      empty: !loading && !failed && sorted.length === 0,
+      emptyTitle: q ? 'No minerals match that search' : 'No minerals match these filters',
+      emptyBody: 'Choose All or clear the search to see the full catalog.',
+      clear,
       retry: () => {
+        void lotsQuery.refetch();
         void hierarchyQuery.refetch();
-        if (level === 'items') void lotsQuery.refetch();
       },
     };
   }, [
     hierarchy,
+    products,
     homeFilter,
     subcategory,
     mineralType,
     productForm,
     query,
-    level,
-    products,
-    api,
+    sort,
     loading,
     failed,
-    itemsFailed,
     setState,
     go,
-    hierarchyQuery,
     lotsQuery,
+    hierarchyQuery,
   ]);
 }

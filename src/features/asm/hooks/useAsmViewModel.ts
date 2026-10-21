@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useAsmState } from '@/hooks/useAppState';
+import { useActions } from '@/hooks/useActions';
 import { FIELD } from '@/constants/tokens';
 import type { AsmStep } from '@/types';
 
@@ -44,7 +45,8 @@ const mChip = (on: boolean) =>
 
 /** View model for the five-step artisanal site registration. */
 export function useAsmViewModel() {
-  const { asmStep, asmElig, asmMin, asmDocs, asmGps, asmForm, setState, go } = useAsmState();
+  const { asmStep, asmElig, asmMin, asmDocs, asmGps, asmCoords, asmGpsError, asmForm, setState, go } = useAsmState();
+  const h = useActions();
 
   return useMemo(() => {
     const ai = ASTEPS.indexOf(asmStep);
@@ -105,8 +107,9 @@ export function useAsmViewModel() {
       eligShort: eligCount < ELIG.length,
       gpsLocked: asmGps,
       gpsPending: !asmGps,
+      gpsError: asmGpsError,
       gpsCta: asmGps ? 'Recapture location' : 'Capture GPS location',
-      coords: '−11.6604, 27.4794',
+      coords: asmCoords,
     };
 
     return {
@@ -192,7 +195,34 @@ export function useAsmViewModel() {
         setState((s) => ({
           asmForm: { ...s.asmForm, workers: (s.asmForm.workers || 0) + 1 },
         })),
-      asmGpsToggle: () => setState((s) => ({ asmGps: !s.asmGps })),
+      asmGpsToggle: () => {
+        if (asmGps) {
+          setState({ asmGps: false, asmCoords: '', asmGpsError: '' });
+          return;
+        }
+        if (!navigator.geolocation) {
+          setState({
+            asmGps: false,
+            asmGpsError: 'Location is not available in this browser. Continue stays unavailable until coordinates are captured.',
+          });
+          return;
+        }
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            const lat = position.coords.latitude.toFixed(4);
+            const lng = position.coords.longitude.toFixed(4);
+            setState({ asmGps: true, asmCoords: `${lat}, ${lng}`, asmGpsError: '' });
+          },
+          () => {
+            setState({
+              asmGps: false,
+              asmCoords: '',
+              asmGpsError: 'Location permission was denied. Allow location access, then capture the site again.',
+            });
+          },
+          { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 },
+        );
+      },
       asmBack: () => {
         const i = ASTEPS.indexOf(asmStep);
         if (i <= 0) {
@@ -207,6 +237,17 @@ export function useAsmViewModel() {
         if (asmStep === 'site' && !siteOk) return;
         if (asmStep === 'gps' && !asmGps) return;
         if (asmStep === 'docs' && !docsDone) return;
+        if (asmStep === 'docs') {
+          h.requireKyc(
+            'register a mining site',
+            () => {
+              setState({ asmStep: 'done' });
+              requestAnimationFrame(() => window.scrollTo({ top: 0 }));
+            },
+            'asm',
+          );
+          return;
+        }
         if (asmStep === 'done') {
           setState({ asmStep: 'elig' });
           go('mining');
@@ -222,8 +263,11 @@ export function useAsmViewModel() {
     asmMin,
     asmDocs,
     asmGps,
+    asmCoords,
+    asmGpsError,
     asmForm,
     setState,
     go,
+    h,
   ]);
 }

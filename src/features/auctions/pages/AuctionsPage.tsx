@@ -164,6 +164,22 @@ export function AuctionsPage() {
           </div>
         ))}
       </div>
+
+      {vm.aucLoading && (
+        <p role="status" style={css('font-size:14px; color:#6b7290; margin-top:8px;')}>Loading auctions…</p>
+      )}
+      {vm.aucFailed && (
+        <div role="alert" style={css('margin-top:8px;')}>
+          <h2 style={css("font-family:'Poppins'; font-size:20px; margin:0;")}>Auctions could not be loaded</h2>
+          <p style={css('color:#6b7290;')}>The request failed. Nothing is shown in its place.</p>
+        </div>
+      )}
+      {vm.aucEmpty && (
+        <div style={css('margin-top:8px;')}>
+          <h2 style={css("font-family:'Poppins'; font-size:20px; margin:0;")}>No auctions in this tab</h2>
+          <p style={css('color:#6b7290;')}>Live, upcoming and ended lots appear here when a sale is scheduled.</p>
+        </div>
+      )}
     </div>
   );
 }

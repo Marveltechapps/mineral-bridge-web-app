@@ -15,6 +15,48 @@ const DETAIL_ROW =
 export function BankPage() {
   const bank = useBankViewModel();
 
+  if (bank.customerView) {
+    return (
+      <div style={css('max-width:1440px; margin:0 auto; padding:32px;')}>
+        <h1
+          style={css(
+            "font-family:'Poppins'; font-size:28px; font-weight:800; color:#141a2e; margin:0; letter-spacing:-.5px;",
+          )}
+        >
+          Bank Portal
+        </h1>
+        <p style={css('font-size:14px; color:#6b7290; margin:6px 0 22px;')}>
+          The status of your letter of credit with the issuing bank.
+        </p>
+        <div
+          style={css(
+            'background:#fff; border:1px solid #e7eaf3; border-radius:18px; padding:36px 28px;',
+          )}
+        >
+          {bank.ownGoods ? (
+            <>
+              <h2 style={css("font-family:'Poppins'; font-size:20px; margin:0; color:#141a2e;")}>
+                {bank.ownGoods}
+              </h2>
+              <p style={css('font-size:14px; color:#6b7290; margin:8px 0 0;')}>
+                Status {bank.ownStatus} · {bank.ownAmount}
+              </p>
+            </>
+          ) : (
+            <>
+              <h2 style={css("font-family:'Poppins'; font-size:20px; margin:0; color:#141a2e;")}>
+                No letter of credit is open yet
+              </h2>
+              <p style={css('font-size:14px; color:#6b7290; margin:8px 0 0;')}>
+                Your bank step appears here after a contract is in place.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={css('max-width:1440px; margin:0 auto; padding:32px;')}>
       <div

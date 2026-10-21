@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { useTradeState } from '@/hooks/useAppState';
+import { useAccountState, useTradeState } from '@/hooks/useAppState';
+import { isApiConfigured } from '@/lib/api/config';
 import { CHIP } from '@/constants/tokens';
 import { chipStyle, formatDate, money } from '@/utils/format';
 import { tradeBtn, tradePill } from '@/features/trade/constants';
@@ -19,6 +20,8 @@ const CONTRACT_HASH = '0x7a3f9c41…e2c19e';
 /** View model for the Contract Builder and its live document preview. */
 export function useContractViewModel() {
   const { ct, ctSigned, setState, go } = useTradeState();
+  const { accForm } = useAccountState();
+  const company = accForm.company;
 
   return useMemo(() => {
     const locked = ctSigned;
@@ -40,6 +43,8 @@ export function useContractViewModel() {
       }));
 
     return {
+      hasDraft: Boolean(ct.lot),
+      buyer: company.trim() || (isApiConfigured() ? 'the buyer' : 'Marvel Trading Co.'),
       f: ct,
       locked,
       signed: locked,
@@ -89,7 +94,7 @@ export function useContractViewModel() {
         setState({
           modal: {
             title: 'Sign this contract?',
-            body: 'You are signing as Marvel Tech for Marvel Trading Co. Terms will be locked and a hash recorded on-chain.',
+            body: `You are signing for ${company.trim() || 'your account'}. Terms will be locked and a hash recorded on-chain.`,
             confirmLabel: 'Sign contract',
             confirm: () =>
               setState((s) => ({
@@ -110,5 +115,5 @@ export function useContractViewModel() {
       },
       openLc: () => go('lc'),
     };
-  }, [ct, ctSigned, setState, go]);
+  }, [ct, ctSigned, accForm.company, setState, go]);
 }

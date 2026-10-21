@@ -7,12 +7,12 @@ import { css } from '@/utils/css';
  * Hidden on the KYC screen itself, exactly as the design specifies.
  */
 export function KycBanner() {
-  const { authed } = useSessionState();
+  const { authed, sessionReady } = useSessionState();
   const { kycStatus } = useKycState();
   const { route } = useNavigationState();
   const h = useActions();
 
-  const show = authed && kycStatus !== 'verified' && route !== 'kyc';
+  const show = sessionReady && authed && kycStatus !== 'verified' && route !== 'kyc';
   if (!show) return null;
 
   const pend = kycStatus === 'pending';

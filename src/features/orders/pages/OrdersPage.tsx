@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import { useOrdersViewModel } from '@/features/orders/hooks/useOrdersViewModel';
 import { useActions } from '@/hooks/useActions';
 import { css } from '@/utils/css';
@@ -8,6 +9,12 @@ const GRID = 'grid-template-columns:1.5fr .7fr .8fr .8fr 1.4fr .8fr; gap:16px;';
 export function OrdersPage() {
   const vm = useOrdersViewModel();
   const h = useActions();
+  const asked = useRef(false);
+  useEffect(() => {
+    if (!vm.needsSignIn || asked.current) return;
+    asked.current = true;
+    h.signIn();
+  }, [vm.needsSignIn, h]);
 
   return (
     <div style={css('max-width:1440px; margin:0 auto; padding:32px;')}>
@@ -163,6 +170,17 @@ export function OrdersPage() {
               Browse assured inventory or list a mineral to get started.
             </div>
             <div style={css('display:flex; gap:11px; justify-content:center; margin-top:20px;')}>
+              {vm.needsSignIn ? (
+                <button
+                  className="v2-btn"
+                  onClick={h.signIn}
+                  style={css(
+                    'height:46px; padding:0 22px; border:none; border-radius:11px; background:#1e2a5a; color:#fff; font-size:14px; font-weight:800; cursor:pointer;',
+                  )}
+                >
+                  Sign in
+                </button>
+              ) : null}
               <button
                 className="v2-btn"
                 onClick={h.goBuy}

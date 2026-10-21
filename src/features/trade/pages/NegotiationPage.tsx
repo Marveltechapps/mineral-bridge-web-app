@@ -11,6 +11,47 @@ const FIELD_VALUE = 'font-size:13.5px; font-weight:700; color:#141a2e; margin-to
 export function NegotiationPage() {
   const neg = useNegotiationViewModel();
 
+  if (neg.empty) {
+    return (
+      <div style={css('max-width:1440px; margin:0 auto; padding:32px;')}>
+        <h1
+          style={css(
+            "font-family:'Poppins'; font-size:28px; font-weight:800; color:#141a2e; margin:0; letter-spacing:-.5px;",
+          )}
+        >
+          Negotiation Room
+        </h1>
+        <p style={css('font-size:14px; color:#6b7290; margin:6px 0 22px;')}>
+          Agree terms with verified counterparties, then turn them into a signed contract.
+        </p>
+        <div
+          style={css(
+            'background:#fff; border:1px solid #e7eaf3; border-radius:18px; padding:36px 28px; text-align:center;',
+          )}
+        >
+          <h2 style={css("font-family:'Poppins'; font-size:20px; margin:0; color:#141a2e;")}>
+            No negotiations yet
+          </h2>
+          <p style={css('font-size:14px; color:#6b7290; margin:8px 0 0;')}>
+            {neg.needsSignIn
+              ? 'Sign in to see offers from verified counterparties.'
+              : 'Offers appear here once a counterparty starts a trade with you.'}
+          </p>
+          {neg.needsSignIn && (
+            <button
+              onClick={neg.signIn}
+              style={css(
+                'margin-top:18px; height:44px; padding:0 18px; border:none; border-radius:12px; background:#1e2a5a; color:#fff; font-weight:800; cursor:pointer;',
+              )}
+            >
+              Sign in
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={css('max-width:1440px; margin:0 auto; padding:32px;')}>
       <h1

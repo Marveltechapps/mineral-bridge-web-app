@@ -114,13 +114,20 @@ export function useKycViewModel() {
     }
     const status: KycStatus =
       record.status === 'pending' || record.status === 'verified' ? record.status : 'unverified';
-    setState({
+    const serverProgress =
+      status !== 'unverified' ||
+      Boolean(record.idType) ||
+      record.captures.length > 0 ||
+      Boolean(record.selfie);
+    // `why` exists only in the client. A new account has no documents yet, so the
+    // server stage is `type`; keep the screen the user is already on until they move.
+    setState((current) => ({
       kycStatus: status,
-      kycIdType: record.idType || 'national',
-      kycShots: shots,
-      kycSelfie: Boolean(record.selfie),
-      kycStage: record.stage || 'why',
-    });
+      kycIdType: record.idType || current.kycIdType,
+      kycShots: Object.keys(shots).length > 0 ? shots : current.kycShots,
+      kycSelfie: Boolean(record.selfie) || current.kycSelfie,
+      kycStage: serverProgress ? record.stage || current.kycStage : current.kycStage,
+    }));
   }, [kycQuery.data, setState]);
 
   return useMemo(() => {
@@ -174,7 +181,7 @@ export function useKycViewModel() {
       why: ['Start verification', '#1e2a5a', '#fff'],
       type: ['Continue', '#1e2a5a', '#fff'],
       capture: [
-        shotsDone ? 'Continue' : 'Capture both sides',
+        shotsDone ? 'Continue' : needBack ? 'Capture both sides' : 'Capture photo page',
         shotsDone ? '#1e2a5a' : '#eef1f8',
         shotsDone ? '#fff' : '#5b638a',
         !shotsDone,
@@ -209,7 +216,17 @@ export function useKycViewModel() {
       progress: Math.round(((kIdx + 1) / KSTAGES.length) * 100) + '%',
       stepLabel: 'Step ' + (kIdx + 1) + ' of 6',
       idLabel: activeId.label.toLowerCase(),
+      captureHint: needBack
+        ? 'Both sides, in focus, all four corners visible.'
+        : 'Photo page, in focus, all four corners visible.',
       selfieDone: kycSelfie,
+      selfieInitials:
+        accForm.name
+          .split(/\s+/)
+          .filter(Boolean)
+          .slice(0, 2)
+          .map((part) => part[0]?.toUpperCase() ?? '')
+          .join('') || '•',
       selfiePending: !kycSelfie,
       selfieCta: kycSelfie ? 'Retake selfie' : 'Take selfie',
       livenessHint: kycSelfie
@@ -217,7 +234,7 @@ export function useKycViewModel() {
         : 'Centre your face in the frame',
       showDemoApprove: !api,
       reference: api ? kycQuery.data?.reference || '—' : 'MB-KYC-77410',
-      showSkip: ks !== 'pending',
+      showSkip: false,
       skipLabel: kycReturn ? 'Skip for now' : 'Do this later',
       isApproved: approved,
       notApproved: !approved,

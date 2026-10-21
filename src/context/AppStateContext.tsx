@@ -20,7 +20,7 @@ export interface AppActionsContextValue {
   /** Shallow-merging updater with the same semantics as the design's `setState`. */
   setState: (patch: StatePatch) => void;
   /** Navigate to a screen and scroll back to the top, as the design's `go` does. */
-  go: (route: RouteKey) => void;
+  go: (route: RouteKey, hash?: string) => void;
 }
 
 export interface AppStateContextValue extends AppActionsContextValue {
@@ -68,11 +68,11 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
 
   const go = useCallback(
-    (route: RouteKey) => {
+    (route: RouteKey, hash?: string) => {
       intendedRoute.current = route;
       setRawState((prev) => (prev.route === route ? prev : { ...prev, route }));
-      navigate(ROUTE_PATHS[route]);
-      scrollToTop();
+      navigate(hash ? `${ROUTE_PATHS[route]}#${hash}` : ROUTE_PATHS[route]);
+      if (!hash) scrollToTop();
     },
     [navigate],
   );
