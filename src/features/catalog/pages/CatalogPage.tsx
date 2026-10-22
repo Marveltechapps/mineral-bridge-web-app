@@ -40,12 +40,6 @@ export function CatalogPage() {
             <option key={option.value} value={option.value}>{option.label}</option>
           ))}
         </select>
-        <select aria-label="Subcategory" value={vm.subcategory} onChange={(event) => vm.setSubcategory(event.target.value)} style={css(SELECT)}>
-          <option value="">All subcategories</option>
-          {vm.subcategories.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
         <select aria-label="Mineral type" value={vm.mineralType} onChange={(event) => vm.setMineralType(event.target.value)} style={css(SELECT)}>
           <option value="">All mineral types</option>
           {vm.mineralTypes.map((option) => (

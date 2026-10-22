@@ -1,5 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { useKycState, useNavigationState, useSessionState } from '@/hooks/useAppState';
 import { useActions } from '@/hooks/useActions';
+import { http } from '@/lib/api/client';
+import { isApiConfigured } from '@/lib/api/config';
 import { css } from '@/utils/css';
 
 /**
@@ -11,19 +14,35 @@ export function KycBanner() {
   const { kycStatus } = useKycState();
   const { route } = useNavigationState();
   const h = useActions();
+  const api = isApiConfigured();
+  const kycQuery = useQuery({
+    queryKey: ['kyc'],
+    queryFn: ({ signal }) =>
+      http.get<{ status?: string; rejectionReason?: string | null; resubmissionRequired?: boolean }>('/kyc', { signal }),
+    enabled: api && authed && sessionReady,
+  });
+  const rejectionReason = kycQuery.data?.rejectionReason?.trim() ?? '';
 
   const show = sessionReady && authed && kycStatus !== 'verified' && route !== 'kyc';
   if (!show) return null;
 
   const pend = kycStatus === 'pending';
+  const rejected = Boolean(rejectionReason);
+  const warn = pend || rejected;
+  const tone = warn ? '#7c5010' : '#1e3a6a';
+  const message = rejected
+    ? `${kycQuery.data?.resubmissionRequired ? 'Please correct your documents' : 'Your verification was not accepted'} — ${rejectionReason}`
+    : pend
+      ? 'Verification under review — you can browse, but buying, selling and bidding unlock once approved.'
+      : 'Verify your identity to unlock buying, selling and bidding. Takes about two minutes.';
 
   return (
     <div
       style={css(
         'border-bottom:1px solid ' +
-          (pend ? '#fcd9a8' : '#dbe4ff') +
+          (warn ? '#fcd9a8' : '#dbe4ff') +
           '; background:' +
-          (pend ? '#fff7ed' : '#eff4ff') +
+          (warn ? '#fff7ed' : '#eff4ff') +
           ';',
       )}
     >
@@ -35,28 +54,26 @@ export function KycBanner() {
         <span
           style={css(
             'width:8px; height:8px; border-radius:4px; flex-shrink:0; background:' +
-              (pend ? '#b45309' : '#2563eb') +
+              (warn ? '#b45309' : '#2563eb') +
               ';',
           )}
         />
         <span
           style={css(
-            'flex:1; font-size:13.5px; font-weight:700; color:' + (pend ? '#7c5010' : '#1e3a6a') + ';',
-          )}
-        >
-          {pend
-            ? 'Verification under review — you can browse, but buying, selling and bidding unlock once approved.'
-            : 'Verify your identity to unlock buying, selling and bidding. Takes about two minutes.'}
+          'flex:1; font-size:13.5px; font-weight:700; color:' + tone + ';',
+        )}
+      >
+          {message}
         </span>
         <button
           onClick={h.goKycFromBanner}
           style={css(
             'height:34px; padding:0 16px; border:none; border-radius:9px; cursor:pointer; font-size:12.5px; font-weight:800; white-space:nowrap; background:' +
-              (pend ? '#b45309' : '#1e2a5a') +
+              (warn ? '#b45309' : '#1e2a5a') +
               '; color:#fff;',
           )}
         >
-          {pend ? 'View status' : 'Verify now'}
+          {rejected ? 'Review documents' : pend ? 'View status' : 'Verify now'}
         </button>
       </div>
     </div>

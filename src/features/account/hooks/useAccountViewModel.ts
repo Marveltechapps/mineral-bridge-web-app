@@ -33,8 +33,17 @@ const ACC_NAV: { k: string; label: string; ic: IconName }[] = [
 const BADGE_COLORS: Record<string, [string, string]> = {
   Verified: ['#0f7034', '#dcf3e8'],
   Pending: ['#8a3f07', '#fdecd6'],
+  Rejected: ['#b42318', '#fdecec'],
+  'In review': ['#1d4ed8', '#dbeafe'],
   Primary: ['#1d4ed8', '#dbeafe'],
 };
+
+function kycDocStatus(status: string): string {
+  if (status === 'verified') return 'Verified';
+  if (status === 'rejected') return 'Rejected';
+  if (status === 'in_review') return 'In review';
+  return 'Pending';
+}
 
 /** View model for the account screen's navigation and panels. */
 export function useAccountViewModel() {
@@ -61,10 +70,21 @@ export function useAccountViewModel() {
       ),
     enabled: api && authed,
   });
+  const kycQuery = useQuery({
+    queryKey: ['kyc'],
+    queryFn: ({ signal }) =>
+      http.get<{
+        status?: string;
+        rejectionReason?: string | null;
+        resubmissionRequired?: boolean;
+        documents?: Array<{ kind: string; name: string; fileId?: string; status: string; rejectionReason?: string | null }>;
+      }>('/kyc', { signal }),
+    enabled: api && authed,
+  });
   const documentsQuery = useQuery({
     queryKey: ['account', 'documents'],
     queryFn: ({ signal }) =>
-      http.get<{ items: Array<{ id: string; name: string; type: string; status: string }> }>('/account/documents', { signal }),
+      http.get<{ items: Array<{ id: string; name: string; type: string; status: string; rejectionReason?: string | null }> }>('/account/documents', { signal }),
     enabled: api && authed,
   });
   const sessionsQuery = useQuery({
@@ -138,8 +158,10 @@ export function useAccountViewModel() {
     });
 
     const shown = accSaved || accForm;
-    const kycStatusSub =
-      kycStatus === 'verified'
+    const rejectionReason = kycQuery.data?.rejectionReason?.trim();
+    const kycStatusSub = rejectionReason
+      ? `${kycQuery.data?.resubmissionRequired ? 'Resubmit required' : 'Rejected'} — ${rejectionReason}`
+      : kycStatus === 'verified'
         ? 'Verified — full trading access'
         : kycStatus === 'pending'
           ? 'Submitted — under compliance review'
@@ -147,9 +169,11 @@ export function useAccountViewModel() {
     const kycStatusCta =
       kycStatus === 'verified'
         ? 'View'
-        : kycStatus === 'pending'
-          ? 'View status'
-          : 'Verify now';
+        : rejectionReason
+          ? 'Review documents'
+          : kycStatus === 'pending'
+            ? 'View status'
+            : 'Verify now';
 
     const extraPayouts = (accPayouts || []).map((p) =>
       badge(p.type, p.ref ? '••• ' + String(p.ref).slice(-4) : 'Linked', p.def ? 'Primary' : 'Verified'),
@@ -174,8 +198,15 @@ export function useAccountViewModel() {
         api
           ? [
               act('Identity verification (KYC)', kycStatusSub, kycStatusCta, () => go('kyc')),
+              ...(kycQuery.data?.documents ?? []).map((doc) =>
+                badge(doc.name, doc.rejectionReason?.trim() || 'Identity document submitted for verification', kycDocStatus(doc.status)),
+              ),
               ...(documentsQuery.data?.items ?? []).map((doc) =>
-                badge(doc.name, doc.type.replace(/_/g, ' '), doc.status === 'verified' ? 'Verified' : doc.status === 'rejected' ? 'Rejected' : 'Pending'),
+                badge(
+                  doc.name,
+                  doc.rejectionReason?.trim() || doc.type.replace(/_/g, ' '),
+                  doc.status === 'verified' ? 'Verified' : doc.status === 'rejected' ? 'Rejected' : 'Pending',
+                ),
               ),
             ]
           : [
@@ -399,6 +430,7 @@ export function useAccountViewModel() {
     api,
     payoutsQuery.data,
     documentsQuery.data,
+    kycQuery.data,
     sessionsQuery.data,
     profileQuery.data,
   ]);

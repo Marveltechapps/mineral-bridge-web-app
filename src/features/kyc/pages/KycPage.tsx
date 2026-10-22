@@ -1,6 +1,103 @@
+import { useEffect, useRef, useState } from 'react';
 import { useKycViewModel } from '@/features/kyc/hooks/useKycViewModel';
 import { Icon } from '@/components/common/Icon';
 import { css } from '@/utils/css';
+
+const chipBtn =
+  'height:30px; padding:0 10px; border:none; border-radius:8px; background:rgba(255,255,255,.94); color:#1e2a5a; font-size:12px; font-weight:800; cursor:pointer;';
+
+function DocumentCamera({
+  label,
+  stream,
+  onCapture,
+  onClose,
+  mirror = false,
+}: {
+  label: string;
+  stream: MediaStream;
+  onCapture: (file: File) => void;
+  onClose: () => void;
+  mirror?: boolean;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.srcObject = stream;
+    void video.play().catch(() => undefined);
+    return () => {
+      video.srcObject = null;
+    };
+  }, [stream]);
+
+  const snap = () => {
+    const video = videoRef.current;
+    if (!video || video.videoWidth === 0 || video.videoHeight === 0) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    context.drawImage(video, 0, 0);
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const safe = label.toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'document';
+      onCapture(new File([blob], `${safe}.jpg`, { type: 'image/jpeg' }));
+    }, 'image/jpeg', 0.92);
+  };
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-label={mirror ? 'Take a live selfie' : `Take ${label} photo`}
+      style={css(
+        'position:fixed; inset:0; z-index:90; background:rgba(14,20,48,.72); display:flex; align-items:center; justify-content:center; padding:24px;',
+      )}
+    >
+      <div
+        style={css(
+          'width:100%; max-width:520px; background:#141a2e; border-radius:20px; padding:16px; display:flex; flex-direction:column; gap:12px;',
+        )}
+      >
+        <video
+          ref={videoRef}
+          autoPlay
+          playsInline
+          muted
+          onLoadedMetadata={() => setReady(true)}
+          style={css(
+            'width:100%; max-height:420px; background:#000; border-radius:14px; object-fit:cover;' +
+              (mirror ? ' transform:scaleX(-1);' : ''),
+          )}
+        />
+        <div style={css('display:flex; gap:10px;')}>
+          <button
+            type="button"
+            onClick={onClose}
+            style={css(
+              'flex:1; height:48px; border:1px solid rgba(255,255,255,.2); border-radius:12px; background:transparent; color:#fff; font-weight:800; cursor:pointer;',
+            )}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={snap}
+            disabled={!ready}
+            style={css(
+              'flex:1; height:48px; border:none; border-radius:12px; background:#16a34a; color:#fff; font-weight:800; cursor:pointer;',
+            )}
+          >
+            Capture
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const H1 =
   "font-family:'Poppins'; font-size:27px; font-weight:800; color:#141a2e; margin:0; letter-spacing:-.5px;";
@@ -68,6 +165,57 @@ export function KycPage() {
           {kyc.stepLabel}
         </span>
       </div>
+
+      {kyc.feedback && (
+        <div
+          role="status"
+          style={css(
+            'background:#fff7ed; border:1px solid #fcd9a8; border-radius:16px; padding:16px 18px; margin-bottom:22px; text-align:left;',
+          )}
+        >
+          <div style={css('font-size:15px; font-weight:800; color:#7c5010;')}>{kyc.feedback.title}</div>
+          <p style={css('font-size:14px; color:#7c5010; margin:8px 0 0; line-height:1.55;')}>{kyc.feedback.reason}</p>
+          <div style={css('display:flex; flex-direction:column; gap:10px; margin-top:14px;')}>
+            {kyc.feedback.documents.map((doc) => (
+              <div
+                key={doc.key}
+                style={css(
+                  'display:flex; align-items:center; gap:12px; background:#fff; border:1px solid #f3e2c4; border-radius:12px; padding:10px;',
+                )}
+              >
+                {doc.previewUrl ? (
+                  <img
+                    src={doc.previewUrl}
+                    alt={doc.name}
+                    style={css('width:72px; height:52px; object-fit:cover; border-radius:8px; flex-shrink:0; background:#f4f5f9;')}
+                  />
+                ) : (
+                  <span
+                    aria-hidden="true"
+                    style={css('width:72px; height:52px; border-radius:8px; flex-shrink:0; background:#f4f5f9;')}
+                  />
+                )}
+                <span style={css('min-width:0; flex:1;')}>
+                  <span style={css('display:block; font-size:13.5px; font-weight:800; color:#141a2e;')}>{doc.name}</span>
+                  <span
+                    style={css(
+                      'display:inline-block; margin-top:4px; font-size:11px; font-weight:800; padding:3px 8px; border-radius:7px; ' +
+                        (doc.rejected ? 'color:#b42318; background:#fdecec;' : 'color:#8a3f07; background:#fdecd6;'),
+                    )}
+                  >
+                    {doc.statusLabel}
+                  </span>
+                  {doc.reason && (
+                    <span style={css('display:block; margin-top:4px; font-size:12.5px; color:#7c5010; line-height:1.45;')}>
+                      {doc.reason}
+                    </span>
+                  )}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {kyc.isWhy && (
         <div className="v2-pr">
@@ -202,33 +350,24 @@ export function KycPage() {
             style={css('display:grid; grid-template-columns:1fr 1fr; gap:16px;')}
           >
             {vm.kycSides.map((s) => (
-              <button key={s.label} onClick={s.capture} style={css(s.boxStyle)}>
-                {s.done ? (
-                  <>
-                    <span
-                      style={css(
-                        'position:absolute; inset:0; background:' + s.grad + '; border-radius:15px;',
-                      )}
-                    />
-                    <span
-                      style={css(
-                        'position:absolute; top:12px; right:12px; width:30px; height:30px; border-radius:15px; background:#16a34a; display:flex; align-items:center; justify-content:center; color:#fff;',
-                      )}
-                    >
-                      <Tick size={16} stroke="currentColor" width={3.2} />
-                    </span>
-                    <span
-                      style={css(
-                        'position:absolute; left:0; right:0; bottom:14px; font-size:13.5px; font-weight:800; color:#fff; text-align:center;',
-                      )}
-                    >
-                      {s.label} captured
-                    </span>
-                  </>
+              <div key={s.label}>
+              <div role="group" aria-label={s.label} style={css(s.boxStyle)}>
+                {s.previewUrl ? (
+                  <img
+                    src={s.previewUrl}
+                    alt={`${s.label} of your document`}
+                    style={css('position:absolute; inset:0; width:100%; height:100%; object-fit:cover;')}
+                  />
+                ) : s.done ? (
+                  <span
+                    style={css(
+                      'position:absolute; inset:0; background:' + s.grad + '; border-radius:15px;',
+                    )}
+                  />
                 ) : (
                   <span
                     style={css(
-                      'display:flex; flex-direction:column; align-items:center; gap:10px; color:#8b95b4;',
+                      'display:flex; flex-direction:column; align-items:center; gap:10px; color:#8b95b4; padding-bottom:36px;',
                     )}
                   >
                     <svg
@@ -248,12 +387,65 @@ export function KycPage() {
                     <span style={css('font-size:14.5px; font-weight:800; color:#1e2a5a;')}>
                       {s.label}
                     </span>
-                    <span style={css('font-size:12px; color:#a3abc4;')}>
-                      Click to capture or upload
-                    </span>
                   </span>
                 )}
-              </button>
+                {s.done && (
+                  <span
+                    style={css(
+                      'position:absolute; top:12px; right:12px; width:30px; height:30px; border-radius:15px; background:#16a34a; display:flex; align-items:center; justify-content:center; color:#fff;',
+                    )}
+                  >
+                    <Tick size={16} stroke="currentColor" width={3.2} />
+                  </span>
+                )}
+                {(s.previewUrl || s.done) && (
+                  <span
+                    style={css(
+                      'position:absolute; left:0; right:0; bottom:46px; font-size:13.5px; font-weight:800; color:#fff; text-align:center; text-shadow:0 1px 4px rgba(0,0,0,.45);',
+                    )}
+                  >
+                    {s.uploading ? 'Uploading…' : s.done ? `${s.label} captured` : 'Not uploaded'}
+                  </span>
+                )}
+                <span
+                  style={css(
+                    'position:absolute; left:8px; right:8px; bottom:10px; display:flex; justify-content:center; gap:8px; z-index:1;',
+                  )}
+                >
+                  <button
+                    type="button"
+                    aria-label={`Take ${s.label} photo`}
+                    onClick={() => vm.openCamera(s.label)}
+                    style={css(chipBtn)}
+                  >
+                    Take photo
+                  </button>
+                  <label htmlFor={`kyc-gallery-${s.label}`} style={css(chipBtn + ' display:inline-flex; align-items:center;')}>
+                    Choose from gallery
+                  </label>
+                </span>
+                <input
+                  id={`kyc-gallery-${s.label}`}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                  aria-label={`Choose ${s.label} photo from gallery`}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = '';
+                    if (file) void vm.acceptDocument(s.label, file);
+                  }}
+                  style={css(
+                    'position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0;',
+                  )}
+                />
+              </div>
+              {s.feedback && (
+                <div style={css('margin-top:8px; font-size:12.5px; line-height:1.45; color:' + (s.feedback.rejected ? '#b42318' : '#5b638a') + ';')}>
+                  <strong>{s.feedback.statusLabel}.</strong>
+                  {s.feedback.reason ? ` ${s.feedback.reason}` : ''}
+                </div>
+              )}
+              </div>
             ))}
           </div>
           <div style={css('display:flex; flex-direction:column; gap:9px; margin-top:20px;')}>
@@ -294,7 +486,13 @@ export function KycPage() {
                 'position:relative; width:210px; height:270px; border-radius:105px/135px; border:3px dashed rgba(247,221,142,.6); display:flex; align-items:center; justify-content:center; overflow:hidden;',
               )}
             >
-              {kyc.selfieDone ? (
+              {vm.selfiePreview ? (
+                <img
+                  src={vm.selfiePreview}
+                  alt="Your selfie"
+                  style={css('position:absolute; inset:0; width:100%; height:100%; object-fit:cover;')}
+                />
+              ) : kyc.selfieDone ? (
                 <>
                   <span
                     style={css(
@@ -339,11 +537,13 @@ export function KycPage() {
                 'position:absolute; left:0; right:0; bottom:18px; text-align:center; font-size:13px; font-weight:700; color:rgba(255,255,255,.7);',
               )}
             >
-              {kyc.livenessHint}
+              {vm.selfieUploading ? 'Checking liveness…' : kyc.livenessHint}
             </div>
           </div>
           <button
-            onClick={vm.kycSelfie}
+            type="button"
+            onClick={vm.startSelfie}
+            disabled={vm.selfieUploading}
             style={css(
               'width:100%; height:50px; margin-top:18px; border:1px solid #d5dbef; border-radius:13px; background:#fff; color:#1e2a5a; font-size:14.5px; font-weight:800; cursor:pointer;',
             )}
@@ -516,6 +716,21 @@ export function KycPage() {
           {kyc.ctaLabel}
         </button>
       </div>
+      {vm.camera && (
+        <DocumentCamera
+          label={vm.camera.label}
+          stream={vm.camera.stream}
+          mirror={vm.camera.mode === 'selfie'}
+          onClose={vm.closeCamera}
+          onCapture={(file) => {
+            const session = vm.camera;
+            vm.closeCamera();
+            if (!session) return;
+            if (session.mode === 'selfie') void vm.acceptSelfie(file);
+            else void vm.acceptDocument(session.label, file);
+          }}
+        />
+      )}
     </div>
   );
 }

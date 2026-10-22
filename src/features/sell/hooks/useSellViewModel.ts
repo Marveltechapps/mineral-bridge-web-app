@@ -6,8 +6,61 @@ import { isApiConfigured } from '@/lib/api/config';
 import { http } from '@/lib/api/client';
 import { CATS, PRODUCTS } from '@/constants/catalog';
 import { getMinerals } from '@/features/catalog/services/catalogService';
+import { uploadFile } from '@/lib/api/uploads';
 import { FIELD } from '@/constants/tokens';
+import type { SellPhoto } from '@/types';
 import { money } from '@/utils/format';
+
+const MAX_SELL_PHOTOS = 4;
+const MIN_SELL_PHOTOS = 3;
+const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
+const pendingPhotoFiles = new Map<string, File>();
+const photoUploads = new Map<string, Promise<string>>();
+
+function storeSellPhoto(photoId: string, file: File): Promise<string> {
+  const existing = photoUploads.get(photoId);
+  if (existing) return existing;
+  const task = uploadFile(file, 'listing-photo')
+    .then((fileId) => {
+      pendingPhotoFiles.delete(photoId);
+      return fileId;
+    })
+    .catch((error: unknown) => {
+      photoUploads.delete(photoId);
+      throw error;
+    });
+  photoUploads.set(photoId, task);
+  return task;
+}
+
+function isJpegOrPng(file: File): boolean {
+  const type = file.type.toLowerCase();
+  return type === 'image/jpeg' || type === 'image/png' || type === 'image/jpg' || /\.(jpe?g|png)$/i.test(file.name);
+}
+
+function previewFor(file: File): Promise<string> {
+  if (typeof URL.createObjectURL === 'function') {
+    try {
+      const url = URL.createObjectURL(file);
+      if (url) return Promise.resolve(url);
+    } catch {
+      // jsdom does not implement object URLs; fall through to a data URL.
+    }
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read the photo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function releasePhoto(photo: SellPhoto | undefined) {
+  if (!photo) return;
+  pendingPhotoFiles.delete(photo.id);
+  photoUploads.delete(photo.id);
+  if (photo.previewUrl.startsWith('blob:')) URL.revokeObjectURL(photo.previewUrl);
+}
 
 /** Indicative gross rate the design applies to a seller's declared quantity. */
 const INDICATIVE_RATE = 2410;
@@ -51,6 +104,8 @@ export function useSellViewModel() {
     ? (mineralsQuery.data ?? []).map((m) => ({ v: m.id, label: m.name, category: m.categoryName }))
     : PRODUCTS.map((p) => ({ v: p.name, label: p.name, category: p.category }));
   const submitting = useRef(false);
+  const photoSlots = useRef((sellForm.photos ?? []).length);
+  photoSlots.current = (sellForm.photos ?? []).length;
 
   return useMemo(() => {
     const ss = sellStep;
@@ -106,6 +161,7 @@ export function useSellViewModel() {
         if (!chosen.trim()) missing.push('mineral name');
         if (!(parseFloat(sf.qty) > 0)) missing.push('a quantity greater than zero');
         if (!sf.form.trim()) missing.push('a form');
+        if ((sf.photos?.length ?? 0) < MIN_SELL_PHOTOS) missing.push('at least 3 photos');
         if (missing.length) {
           setState({
             modal: {
@@ -163,8 +219,15 @@ export function useSellViewModel() {
               return;
             }
             submitting.current = true;
-            void http
-              .post('/listings', {
+            const photos = sf.photos ?? [];
+            void (async () => {
+              const photoFileIds = await Promise.all(photos.map(async (photo) => {
+                if (photo.fileId) return photo.fileId;
+                const file = pendingPhotoFiles.get(photo.id);
+                if (!file) throw new Error(`Choose ${photo.name} again.`);
+                return storeSellPhoto(photo.id, file);
+              }));
+              return http.post('/listings', {
                 mineralId: sf.mineral === '__other' ? null : sf.mineral,
                 customMineralName: sf.mineral === '__other' ? sf.customMineral : chosen?.label,
                 quantity: { value: parseFloat(sf.qty) || 0, unit: sf.unit },
@@ -175,8 +238,10 @@ export function useSellViewModel() {
                 },
                 preferredSlot: slot === 'morning' || slot === 'afternoon' ? slot : 'flexible',
                 payoutPreference: sf.payout || 'Bank transfer',
+                photoFileIds,
                 submit: true,
-              }, { headers: { 'Idempotency-Key': crypto.randomUUID() } })
+              }, { headers: { 'Idempotency-Key': crypto.randomUUID() } });
+            })()
               .then(() => setState({ sellStep: 4 }))
               .catch((error: unknown) => {
                 setState({
@@ -222,6 +287,7 @@ export function useSellViewModel() {
         { k: 'Category', v: sf.category },
         { k: 'Quantity', v: (sf.qty || '—') + ' ' + sf.unit },
         { k: 'Form', v: sf.form },
+        { k: 'Photos', v: String((sf.photos ?? []).length) },
         {
           k: 'Verification location',
           v: (sf.city || 'Not set') + (sf.country ? ', ' + sf.country : ''),
@@ -271,10 +337,90 @@ export function useSellViewModel() {
         style: pill(sf.slot === o),
         select: () => setState((s) => ({ sellForm: { ...s.sellForm, slot: o } })),
       })),
-      sellPhotos: [0, 1, 2, 3].map((i) => ({
-        i,
-        bg: i < 2 ? 'linear-gradient(140deg,#f3d27a,#b8860b)' : '#eef1f8',
-      })),
+      sellPhotos: [0, 1, 2, 3].map((i) => {
+        const photo = (sf.photos ?? [])[i];
+        return {
+          i,
+          name: photo?.name ?? '',
+          previewUrl: photo?.previewUrl ?? '',
+          saved: Boolean(photo?.fileId),
+          removeLabel: photo ? `Remove ${photo.name}` : '',
+          box:
+            'position:relative; aspect-ratio:1; border-radius:12px; overflow:hidden; background:' +
+            (photo?.previewUrl ? '#111' : '#eef1f8') +
+            '; border:1px solid #eef1f8;',
+          remove: () => {
+            if (!photo) return;
+            releasePhoto(photo);
+            photoSlots.current = Math.max(0, photoSlots.current - 1);
+            setState((s) => ({
+              sellForm: { ...s.sellForm, photos: (s.sellForm.photos ?? []).filter((item) => item.id !== photo.id) },
+            }));
+          },
+        };
+      }),
+      addSellPhotos: (list: FileList | File[] | null) => {
+        const incoming = Array.from(list ?? []);
+        if (incoming.length === 0) return;
+        const rejected = incoming.filter((file) => !isJpegOrPng(file) || file.size <= 0 || file.size > MAX_PHOTO_BYTES);
+        const accepted = incoming.filter((file) => isJpegOrPng(file) && file.size > 0 && file.size <= MAX_PHOTO_BYTES);
+        const room = MAX_SELL_PHOTOS - photoSlots.current;
+        const next = accepted.slice(0, Math.max(0, room));
+        photoSlots.current += next.length;
+        void Promise.all(next.map(async (file) => {
+          const id = crypto.randomUUID();
+          pendingPhotoFiles.set(id, file);
+          const photo: SellPhoto = { id, name: file.name || 'photo', previewUrl: await previewFor(file) };
+          return photo;
+        })).then((photos) => {
+          if (!photos.length) return;
+          setState((s) => {
+            const existing = s.sellForm.photos ?? [];
+            const take = photos.slice(0, Math.max(0, MAX_SELL_PHOTOS - existing.length));
+            photos.slice(take.length).forEach(releasePhoto);
+            photoSlots.current = existing.length + take.length;
+            return { sellForm: { ...s.sellForm, photos: [...existing, ...take] } };
+          });
+          if (api && authed) {
+            for (const photo of photos) {
+              const file = pendingPhotoFiles.get(photo.id);
+              if (!file) continue;
+              void storeSellPhoto(photo.id, file)
+                .then((fileId) => {
+                  pendingPhotoFiles.delete(photo.id);
+                  setState((s) => ({
+                    sellForm: {
+                      ...s.sellForm,
+                      photos: (s.sellForm.photos ?? []).map((item) => (item.id === photo.id ? { ...item, fileId } : item)),
+                    },
+                  }));
+                })
+                .catch((error: unknown) => {
+                  setState({
+                    modal: {
+                      title: 'Photo was not uploaded',
+                      body: error instanceof Error ? error.message : 'The photo could not be saved. It is still shown below so you can try again.',
+                      confirmLabel: 'Close',
+                      confirm: () => setState({ modal: null }),
+                    },
+                  });
+                });
+            }
+          }
+        });
+        if (rejected.length || accepted.length > next.length) {
+          setState({
+            modal: {
+              title: 'Some photos were skipped',
+              body: room <= 0
+                ? 'You can add up to 4 photos. Remove one to add another.'
+                : 'Use JPG or PNG files, up to 10 MB each, and no more than 4 photos.',
+              confirmLabel: 'Got it',
+              confirm: () => setState({ modal: null }),
+            },
+          });
+        }
+      },
       sellGross: api ? '—' : money(sGross),
       sellFee: api ? '—' : money(sFeeV),
       sellNet: api ? '—' : money(sGross - sFeeV),

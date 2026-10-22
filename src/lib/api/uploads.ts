@@ -22,13 +22,26 @@ export async function uploadFile(file: File, purpose: string): Promise<string> {
   return created.fileId;
 }
 
-/** Opens the system file picker without adding a control to the page. */
+/**
+ * Opens the system file picker. The input has to be in the document; a click on a
+ * detached file input is ignored by the browser, so the gallery never opens.
+ */
 export function pickFile(accept: string): Promise<File | null> {
   return new Promise((resolve) => {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = accept;
-    input.onchange = () => resolve(input.files?.[0] ?? null);
+    input.style.cssText = 'position:fixed;left:-9999px;top:0;width:1px;height:1px;opacity:0';
+    let settled = false;
+    const finish = (file: File | null) => {
+      if (settled) return;
+      settled = true;
+      input.remove();
+      resolve(file);
+    };
+    input.addEventListener('change', () => finish(input.files?.[0] ?? null));
+    input.addEventListener('cancel', () => finish(null));
+    document.body.appendChild(input);
     input.click();
   });
 }

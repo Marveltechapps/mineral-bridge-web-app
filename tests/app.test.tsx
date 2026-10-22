@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { screen, within } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import type { UserEvent } from '@testing-library/user-event';
 import { renderApp } from './render';
 
@@ -46,7 +46,7 @@ describe('catalog navigation', () => {
     expect(screen.getByRole('heading', { name: 'Browse minerals' })).toBeInTheDocument();
     expect(screen.getByLabelText('Search minerals')).toBeInTheDocument();
     expect(screen.getByLabelText('Category')).toBeInTheDocument();
-    expect(screen.getByLabelText('Subcategory')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Subcategory')).not.toBeInTheDocument();
     expect(screen.getByLabelText('Mineral type')).toBeInTheDocument();
     expect(screen.getByLabelText('Form')).toBeInTheDocument();
     expect(screen.getByLabelText('Sort')).toBeInTheDocument();
@@ -65,6 +65,18 @@ describe('catalog navigation', () => {
     expect(screen.getByRole('button', { name: /Copper Cathode/ })).toBeInTheDocument();
   });
 });
+
+function sellPhoto(name: string) {
+  return new File([new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10])], name, { type: 'image/png' });
+}
+
+async function addSellPhotos(user: UserEvent) {
+  await user.upload(screen.getByLabelText('Photos of your mineral'), [
+    sellPhoto('one.png'),
+    sellPhoto('two.png'),
+    sellPhoto('three.png'),
+  ]);
+}
 
 describe('sell wizard', () => {
   it('flags missing mineral details before asking anyone to sign in', async () => {
@@ -85,11 +97,24 @@ describe('sell wizard', () => {
     expect(screen.getByText(/mineral name and a quantity greater than zero/)).toBeInTheDocument();
   });
 
+  it('shows each uploaded photo in a card', async () => {
+    const { user } = renderApp('/sell');
+    await addSellPhotos(user);
+    expect(await screen.findByRole('img', { name: 'one.png' })).toHaveAttribute('src', expect.stringMatching(/^(blob:|data:image\/)/));
+    expect(screen.getByRole('img', { name: 'two.png' })).toBeInTheDocument();
+    expect(screen.getByRole('img', { name: 'three.png' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Remove one.png' }));
+    expect(screen.queryByRole('img', { name: 'one.png' })).not.toBeInTheDocument();
+  });
+
   it('advances to the location step once the details are complete', async () => {
     const { user } = renderApp('/sell');
     await signIn(user);
     await user.selectOptions(screen.getByLabelText('Mineral'), 'Gold Concentrate');
     await user.type(screen.getByLabelText('Estimated quantity'), '500');
+    await addSellPhotos(user);
+    await screen.findByRole('img', { name: 'three.png' });
 
     await user.click(screen.getByRole('button', { name: 'Continue' }));
     expect(screen.getByText('Step 2 of 4')).toBeInTheDocument();
@@ -237,12 +262,44 @@ describe('identity verification', () => {
 
     const blocked = screen.getByRole('button', { name: 'Capture both sides' });
     expect(blocked).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Take Front photo' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Take Back photo' })).toBeInTheDocument();
 
-    const capture = screen.getByText('Both sides, in focus, all four corners visible.')
-      .parentElement!;
-    await user.click(within(capture).getByRole('button', { name: /^Front/ }));
-    await user.click(within(capture).getByRole('button', { name: /^Back/ }));
+    await user.upload(screen.getByLabelText('Choose Front photo from gallery'), sellPhoto('front.png'));
+    await user.upload(screen.getByLabelText('Choose Back photo from gallery'), sellPhoto('back.png'));
+
+    expect(await screen.findByRole('img', { name: 'Front of your document' })).toHaveAttribute(
+      'src',
+      expect.stringMatching(/^(blob:|data:image\/)/),
+    );
+    expect(screen.getByRole('img', { name: 'Back of your document' })).toHaveAttribute(
+      'src',
+      expect.stringMatching(/^(blob:|data:image\/)/),
+    );
     expect(screen.getByRole('button', { name: 'Continue' })).toBeEnabled();
+  });
+
+  it('explains that the gallery is the fallback when the camera cannot open', async () => {
+    const { user } = renderApp('/kyc');
+    await user.click(screen.getByRole('button', { name: 'Start verification' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(screen.getByRole('button', { name: 'Take Front photo' }));
+    expect(await screen.findByRole('dialog', { name: 'Camera unavailable' })).toBeInTheDocument();
+  });
+
+  it('opens the camera for a selfie instead of the gallery', async () => {
+    const { user } = renderApp('/kyc');
+    await user.click(screen.getByRole('button', { name: 'Start verification' }));
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.upload(screen.getByLabelText('Choose Front photo from gallery'), sellPhoto('front.png'));
+    await user.upload(screen.getByLabelText('Choose Back photo from gallery'), sellPhoto('back.png'));
+    await user.click(await screen.findByRole('button', { name: 'Continue' }));
+
+    expect(screen.getByRole('heading', { name: 'Liveness check' })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Take selfie' }));
+    expect(await screen.findByRole('dialog', { name: 'Camera required' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/gallery/i)).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Take selfie first' })).toBeDisabled();
   });
 
   it('asks for a passport photo page only', async () => {

@@ -1,10 +1,101 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useAccountState, useKycState, useSessionState } from '@/hooks/useAppState';
 import { isApiConfigured } from '@/lib/api/config';
 import { http } from '@/lib/api/client';
-import { pickFile, uploadFile } from '@/lib/api/uploads';
+import { uploadFile } from '@/lib/api/uploads';
+import type { KycShot } from '@/store/slices/kycSlice';
 import type { IconName, KycStage, KycStatus, RouteKey } from '@/types';
+
+const MAX_ID_PHOTO_BYTES = 10 * 1024 * 1024;
+
+interface PendingShot {
+  file: File;
+  url: string;
+}
+
+interface CameraSession {
+  label: string;
+  stream: MediaStream;
+  /** Document photos use the rear camera. A selfie must use the front camera. */
+  mode: 'document' | 'selfie';
+}
+
+interface SelfieUploadResult {
+  liveness?: { passed?: boolean; reason?: string | null };
+}
+
+function isIdPhoto(file: File): boolean {
+  const type = file.type.toLowerCase();
+  return (
+    type === 'image/jpeg' ||
+    type === 'image/jpg' ||
+    type === 'image/png' ||
+    type === 'image/webp' ||
+    /\.(jpe?g|png|webp)$/i.test(file.name)
+  );
+}
+
+/** Some gallery picks omit a MIME type. The upload API rejects an empty content type. */
+function withPhotoType(file: File): File {
+  if (file.type) return file;
+  const name = file.name.toLowerCase();
+  const type = name.endsWith('.png')
+    ? 'image/png'
+    : name.endsWith('.webp')
+      ? 'image/webp'
+      : name.endsWith('.jpg') || name.endsWith('.jpeg')
+        ? 'image/jpeg'
+        : '';
+  return type ? new File([file], file.name, { type }) : file;
+}
+
+function previewFor(file: File): Promise<string> {
+  if (typeof URL.createObjectURL === 'function') {
+    try {
+      const url = URL.createObjectURL(file);
+      if (url) return Promise.resolve(url);
+    } catch {
+      // jsdom does not implement object URLs; fall through to a data URL.
+    }
+  }
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ''));
+    reader.onerror = () => reject(reader.error ?? new Error('Could not read the photo.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function releasePreview(shot: KycShot | undefined) {
+  if (shot && typeof shot === 'object' && shot.url.startsWith('blob:')) URL.revokeObjectURL(shot.url);
+}
+
+function shotPreview(shot: KycShot | undefined): string {
+  return shot && typeof shot === 'object' ? shot.url : '';
+}
+
+/** A boolean shot was already stored on the server. A preview is ready once its upload finishes. */
+function shotReady(shot: KycShot | undefined): boolean {
+  if (shot === true) return true;
+  return !!shot && typeof shot === 'object' && shot.ready && shot.url.length > 0;
+}
+
+/** Ask for a camera. A failed facing-mode request retries with any camera. Never opens the gallery. */
+async function requestCamera(facing: 'user' | 'environment'): Promise<MediaStream> {
+  const media = typeof navigator !== 'undefined' ? navigator.mediaDevices : undefined;
+  if (!media?.getUserMedia) throw new Error('This browser cannot open the camera.');
+  try {
+    return await media.getUserMedia({ audio: false, video: { facingMode: { ideal: facing } } });
+  } catch {
+    return media.getUserMedia({ audio: false, video: true });
+  }
+}
+
+function webIdType(value: string): 'national' | 'passport' | 'licence' {
+  if (value === 'passport' || value === 'licence') return value;
+  return 'national';
+}
 
 const CAPTURE_SIDE: Record<string, 'front' | 'back' | 'photo_page'> = {
   Front: 'front',
@@ -13,13 +104,33 @@ const CAPTURE_SIDE: Record<string, 'front' | 'back' | 'photo_page'> = {
 };
 const SIDE_LABEL: Record<string, string> = { front: 'Front', back: 'Back', photo_page: 'Photo page' };
 
+export interface WebKycDocument {
+  kind: string;
+  side: string | null;
+  name: string;
+  fileId?: string;
+  status: string;
+  rejectionReason?: string | null;
+}
+
 interface WebKyc {
-  status: KycStatus | 'none';
+  status: KycStatus | 'none' | 'rejected';
   stage: KycStage;
   idType: string | null;
   reference: string | null;
-  captures: Array<{ side: string }>;
+  captures: Array<{ side: string; fileId?: string }>;
   selfie: { fileId: string } | null;
+  rejectionReason?: string | null;
+  retryAllowed?: boolean | null;
+  resubmissionRequired?: boolean;
+  documents?: WebKycDocument[];
+}
+
+function documentStatusLabel(status: string): string {
+  if (status === 'verified') return 'Verified';
+  if (status === 'rejected') return 'Rejected';
+  if (status === 'in_review') return 'In review';
+  return 'Uploaded';
 }
 
 const KSTAGES: KycStage[] = ['why', 'type', 'capture', 'live', 'review', 'pending'];
@@ -101,12 +212,17 @@ export function useKycViewModel() {
     queryKey: ['kyc'],
     queryFn: ({ signal }) => http.get<WebKyc>('/kyc', { signal }),
     enabled: api && authed,
+    refetchInterval: (query) => (query.state.data?.status === 'pending' ? 10000 : false),
   });
-  const hydrated = useRef(false);
+  const appliedDecision = useRef('');
+  const [feedbackUrls, setFeedbackUrls] = useState<Record<string, string>>({});
   useEffect(() => {
     const record = kycQuery.data;
-    if (!record || hydrated.current) return;
-    hydrated.current = true;
+    if (!record) return;
+    const signature = `${record.status}|${record.reference ?? ''}|${record.rejectionReason ?? ''}|${record.resubmissionRequired ? '1' : '0'}`;
+    const decisionChanged = appliedDecision.current !== signature;
+    if (!decisionChanged) return;
+    appliedDecision.current = signature;
     const shots: Record<string, boolean> = {};
     for (const capture of record.captures) {
       const label = SIDE_LABEL[capture.side];
@@ -118,60 +234,296 @@ export function useKycViewModel() {
       status !== 'unverified' ||
       Boolean(record.idType) ||
       record.captures.length > 0 ||
-      Boolean(record.selfie);
+      Boolean(record.selfie) ||
+      Boolean(record.rejectionReason);
     // `why` exists only in the client. A new account has no documents yet, so the
     // server stage is `type`; keep the screen the user is already on until they move.
     setState((current) => ({
       kycStatus: status,
       kycIdType: record.idType || current.kycIdType,
-      kycShots: Object.keys(shots).length > 0 ? shots : current.kycShots,
+      kycShots: Object.keys(shots).length > 0 ? { ...current.kycShots, ...shots } : current.kycShots,
       kycSelfie: Boolean(record.selfie) || current.kycSelfie,
-      kycStage: serverProgress ? record.stage || current.kycStage : current.kycStage,
+      kycStage: serverProgress ? (record.status === 'rejected' ? 'capture' : record.stage || current.kycStage) : current.kycStage,
     }));
+    for (const capture of record.captures) {
+      const label = SIDE_LABEL[capture.side];
+      if (!label || !capture.fileId) continue;
+      void http
+        .get<{ url: string }>(`/files/${capture.fileId}`)
+        .then((signed) => {
+          if (!signed?.url) return;
+          setState((current) => {
+            const existing = current.kycShots[label];
+            if (existing && typeof existing !== 'boolean') return {};
+            return { kycShots: { ...current.kycShots, [label]: { url: signed.url, ready: true } } };
+          });
+        })
+        .catch(() => undefined);
+    }
+    for (const doc of record.documents ?? []) {
+      if (!doc.fileId) continue;
+      const fileId = doc.fileId;
+      void http
+        .get<{ url: string }>(`/files/${fileId}`)
+        .then((signed) => {
+          if (!signed?.url) return;
+          setFeedbackUrls((current) => ({ ...current, [fileId]: signed.url }));
+        })
+        .catch(() => undefined);
+    }
   }, [kycQuery.data, setState]);
 
-  return useMemo(() => {
+  const [camera, setCamera] = useState<CameraSession | null>(null);
+  const [selfiePreview, setSelfiePreview] = useState('');
+  const [selfieUploading, setSelfieUploading] = useState(false);
+  const selfiePreviewRef = useRef('');
+  const pendingFiles = useRef(new Map<string, PendingShot>());
+
+  const fail = useCallback(
+    (title: string, body: string) => {
+      setState({
+        modal: {
+          title,
+          body,
+          confirmLabel: 'Close',
+          confirm: () => setState({ modal: null }),
+        },
+      });
+    },
+    [setState],
+  );
+
+  const uploadCommitted = useCallback(
+    async (label: string, file: File, previewUrl: string) => {
+      setState((current) => {
+        const shot = current.kycShots[label];
+        if (!shot || typeof shot === 'boolean' || shot.url !== previewUrl || shot.uploading) return {};
+        return {
+          kycShots: { ...current.kycShots, [label]: { url: previewUrl, ready: false, uploading: true } },
+        };
+      });
+      try {
+        await http.patch('/kyc', { idType: webIdType(kycIdType) });
+        const fileId = await uploadFile(file, 'document');
+        await http.post('/kyc/captures', { side: CAPTURE_SIDE[label], fileId });
+        setState((current) => {
+          const shot = current.kycShots[label];
+          if (!shot || typeof shot === 'boolean' || shot.url !== previewUrl) return {};
+          return {
+            kycShots: { ...current.kycShots, [label]: { url: previewUrl, ready: true, uploading: false } },
+          };
+        });
+      } catch (error: unknown) {
+        setState((current) => {
+          const shot = current.kycShots[label];
+          const next = { ...current.kycShots };
+          if (shot && typeof shot !== 'boolean' && shot.url === previewUrl) {
+            next[label] = { url: previewUrl, ready: false, uploading: false };
+          }
+          return {
+            kycShots: next,
+            modal: {
+              title: 'Document was not uploaded',
+              body: error instanceof Error ? error.message : 'The capture was rejected.',
+              confirmLabel: 'Close',
+              confirm: () => setState({ modal: null }),
+            },
+          };
+        });
+      }
+    },
+    [kycIdType, setState],
+  );
+
+  useEffect(() => {
+    if (!api || !authed) return;
+    const queued = [...pendingFiles.current.entries()];
+    pendingFiles.current.clear();
+    for (const [label, item] of queued) void uploadCommitted(label, item.file, item.url);
+  }, [api, authed, uploadCommitted]);
+
+  const acceptDocument = useCallback(
+    async (label: string, raw: File) => {
+      const file = withPhotoType(raw);
+      if (!isIdPhoto(file)) {
+        fail('Use a photo', 'Choose a JPG, PNG or WebP image from your camera or gallery.');
+        return;
+      }
+      if (file.size <= 0 || file.size > MAX_ID_PHOTO_BYTES) {
+        fail('Photo is too large', 'Each side must be a photo of 10 MB or smaller.');
+        return;
+      }
+      let url = '';
+      try {
+        url = await previewFor(file);
+      } catch (error: unknown) {
+        fail('Photo could not be read', error instanceof Error ? error.message : 'Choose the photo again.');
+        return;
+      }
+      if (!url) {
+        fail('Photo could not be read', 'Choose the photo again.');
+        return;
+      }
+      setState((current) => {
+        releasePreview(current.kycShots[label]);
+        return {
+          kycShots: {
+            ...current.kycShots,
+            [label]: { url, ready: !api, uploading: Boolean(api && authed) },
+          },
+        };
+      });
+      if (!api) return;
+      if (!authed) {
+        pendingFiles.current.set(label, { file, url });
+        setState({ authOpen: true, authMode: 'login', authStage: 'form' });
+        return;
+      }
+      await uploadCommitted(label, file, url);
+    },
+    [api, authed, fail, setState, uploadCommitted],
+  );
+
+  const closeCamera = useCallback(() => {
+    setCamera((current) => {
+      current?.stream.getTracks().forEach((track) => track.stop());
+      return null;
+    });
+  }, []);
+
+  const showCamera = useCallback((label: string, stream: MediaStream, mode: CameraSession['mode']) => {
+    setCamera((current) => {
+      current?.stream.getTracks().forEach((track) => track.stop());
+      return { label, stream, mode };
+    });
+  }, []);
+
+  const openCamera = useCallback(
+    (label: string) => {
+      void requestCamera('environment')
+        .then((stream) => showCamera(label, stream, 'document'))
+        .catch(() => {
+          fail(
+            'Camera unavailable',
+            'This browser cannot open the camera. Choose a photo from your gallery instead.',
+          );
+        });
+    },
+    [fail, showCamera],
+  );
+
+  const rememberSelfie = useCallback((url: string) => {
+    if (selfiePreviewRef.current.startsWith('blob:')) URL.revokeObjectURL(selfiePreviewRef.current);
+    selfiePreviewRef.current = url;
+    setSelfiePreview(url);
+  }, []);
+
+  const acceptSelfie = useCallback(
+    async (raw: File) => {
+      const file = withPhotoType(raw);
+      if (!isIdPhoto(file)) {
+        fail('Use a photo', 'The selfie must be a JPG, PNG or WebP image from the camera.');
+        return;
+      }
+      let url = '';
+      try {
+        url = await previewFor(file);
+      } catch (error: unknown) {
+        fail('Selfie could not be read', error instanceof Error ? error.message : 'Take the selfie again.');
+        return;
+      }
+      if (!url) {
+        fail('Selfie could not be read', 'Take the selfie again.');
+        return;
+      }
+      rememberSelfie(url);
+      if (!api) {
+        setState({ kycSelfie: true });
+        return;
+      }
+      if (!authed) {
+        setState({ authOpen: true, authMode: 'login', authStage: 'form', kycSelfie: false });
+        return;
+      }
+      setSelfieUploading(true);
+      try {
+        const fileId = await uploadFile(file, 'document');
+        const result = await http.post<SelfieUploadResult>('/kyc/selfie', { fileId });
+        if (result?.liveness?.passed === false) {
+          setState({
+            kycSelfie: false,
+            modal: {
+              title: 'Liveness check failed',
+              body: result.liveness.reason || 'Centre your face in the frame and take the selfie again.',
+              confirmLabel: 'Retake',
+              confirm: () => setState({ modal: null }),
+            },
+          });
+          return;
+        }
+        setState({ kycSelfie: true });
+      } catch (error: unknown) {
+        setState({
+          modal: {
+            title: 'Selfie was not uploaded',
+            body: error instanceof Error ? error.message : 'The liveness check was rejected.',
+            confirmLabel: 'Close',
+            confirm: () => setState({ modal: null }),
+          },
+        });
+      } finally {
+        setSelfieUploading(false);
+      }
+    },
+    [api, authed, fail, rememberSelfie, setState],
+  );
+
+  const startSelfie = useCallback(() => {
+    void requestCamera('user')
+      .then((stream) => showCamera('selfie', stream, 'selfie'))
+      .catch(() => {
+        fail(
+          'Camera required',
+          'Liveness needs a live camera photo. Allow camera access and try again. A picture from the gallery cannot be used.',
+        );
+      });
+  }, [fail, showCamera]);
+
+  useEffect(() => () => camera?.stream.getTracks().forEach((track) => track.stop()), [camera]);
+
+  const model = useMemo(() => {
     const ks = kycStage;
     const kIdx = KSTAGES.indexOf(ks);
     const activeId = ID_TYPES.find((t) => t.k === kycIdType) || ID_TYPES[0];
     const needBack = kycIdType !== 'passport';
 
+    const serverDocs = kycQuery.data?.documents ?? [];
     const kycSides = (needBack ? ['Front', 'Back'] : ['Photo page']).map((lbl) => {
-      const done = !!kycShots[lbl];
+      const shot = kycShots[lbl];
+      const previewUrl = shotPreview(shot);
+      const done = shotReady(shot);
+      const uploading = !!shot && typeof shot === 'object' && shot.uploading === true;
+      const serverDoc = serverDocs.find((doc) => SIDE_LABEL[doc.side ?? ''] === lbl);
       return {
         label: lbl,
         done,
         pending: !done,
+        uploading,
+        previewUrl,
+        feedback: serverDoc
+          ? {
+              statusLabel: documentStatusLabel(serverDoc.status),
+              reason: serverDoc.rejectionReason || '',
+              rejected: serverDoc.status === 'rejected',
+            }
+          : null,
         grad: 'linear-gradient(150deg,#5b6480,#2a3350)',
         boxStyle:
-          'position:relative; height:190px; border-radius:16px; cursor:pointer; display:flex; align-items:center; justify-content:center; overflow:hidden; background:' +
-          (done ? 'transparent' : '#f9fafd') +
+          'position:relative; height:190px; border-radius:16px; display:flex; align-items:center; justify-content:center; overflow:hidden; background:' +
+          (previewUrl || done ? 'transparent' : '#f9fafd') +
           '; border:' +
           (done ? '1.5px solid #16a34a' : '1.5px dashed #cdd4e6') +
           ';',
-        capture: () => {
-          if (!api) {
-            setState((s) => ({ kycShots: { ...s.kycShots, [lbl]: true } }));
-            return;
-          }
-          void pickFile('image/jpeg,image/png,image/webp,application/pdf').then(async (file) => {
-            if (!file) return;
-            try {
-              const fileId = await uploadFile(file, 'document');
-              await http.post('/kyc/captures', { side: CAPTURE_SIDE[lbl], fileId });
-              setState((s) => ({ kycShots: { ...s.kycShots, [lbl]: true } }));
-            } catch (error: unknown) {
-              setState({
-                modal: {
-                  title: 'Document was not uploaded',
-                  body: error instanceof Error ? error.message : 'The capture was rejected.',
-                  confirmLabel: 'Close',
-                  confirm: () => setState({ modal: null }),
-                },
-              });
-            }
-          });
-        },
       };
     });
 
@@ -266,6 +618,20 @@ export function useKycViewModel() {
       refChip:
         'font-size:11.5px; font-weight:800; padding:6px 13px; border-radius:9px; white-space:nowrap; ' +
         (approved ? 'color:#16a34a; background:#dcf3e8;' : 'color:#b45309; background:#fdecd6;'),
+      feedback: kycQuery.data?.rejectionReason
+        ? {
+            title: kycQuery.data.resubmissionRequired ? 'Please upload this again' : 'Verification was not accepted',
+            reason: kycQuery.data.rejectionReason,
+            documents: (kycQuery.data.documents ?? []).map((doc) => ({
+              key: doc.fileId || doc.kind,
+              name: doc.name,
+              statusLabel: documentStatusLabel(doc.status),
+              reason: doc.rejectionReason || '',
+              previewUrl: doc.fileId ? feedbackUrls[doc.fileId] || '' : '',
+              rejected: doc.status === 'rejected',
+            })),
+          }
+        : null,
     };
 
     return {
@@ -315,13 +681,13 @@ export function useKycViewModel() {
         { k: 'Document type', v: activeId.label, ok: true },
         {
           k: 'Front image',
-          v: kycShots['Front'] || kycShots['Photo page'] ? 'Captured' : 'Missing',
-          ok: !!(kycShots['Front'] || kycShots['Photo page']),
+          v: shotReady(kycShots['Front']) || shotReady(kycShots['Photo page']) ? 'Captured' : 'Missing',
+          ok: shotReady(kycShots['Front']) || shotReady(kycShots['Photo page']),
         },
         {
           k: 'Back image',
-          v: needBack ? (kycShots['Back'] ? 'Captured' : 'Missing') : 'Not required',
-          ok: needBack ? !!kycShots['Back'] : true,
+          v: needBack ? (shotReady(kycShots['Back']) ? 'Captured' : 'Missing') : 'Not required',
+          ok: needBack ? shotReady(kycShots['Back']) : true,
         },
         { k: 'Liveness selfie', v: kycSelfie ? 'Captured' : 'Missing', ok: kycSelfie },
         { k: 'Full name', v: accForm.name || '—', ok: Boolean(accForm.name) },
@@ -348,29 +714,6 @@ export function useKycViewModel() {
           (n.done ? '#16a34a' : '#eef1f8') +
           ';',
       })),
-      kycSelfie: () => {
-        if (!api) {
-          setState((s) => ({ kycSelfie: !s.kycSelfie }));
-          return;
-        }
-        void pickFile('image/jpeg,image/png,image/webp').then(async (file) => {
-          if (!file) return;
-          try {
-            const fileId = await uploadFile(file, 'document');
-            await http.post('/kyc/selfie', { fileId });
-            setState({ kycSelfie: true });
-          } catch (error: unknown) {
-            setState({
-              modal: {
-                title: 'Selfie was not uploaded',
-                body: error instanceof Error ? error.message : 'The liveness check was rejected.',
-                confirmLabel: 'Close',
-                confirm: () => setState({ modal: null }),
-              },
-            });
-          }
-        });
-      },
       kycApprove: () => setState({ kycStatus: 'verified' }),
       kycSkip: () => {
         const back: RouteKey =
@@ -390,7 +733,7 @@ export function useKycViewModel() {
         const i = KSTAGES.indexOf(kycStage);
         if (kycStage === 'capture') {
           const need = kycIdType !== 'passport' ? ['Front', 'Back'] : ['Photo page'];
-          if (!need.every((k) => kycShots[k])) return;
+          if (!need.every((k) => shotReady(kycShots[k]))) return;
         }
         if (kycStage === 'live' && !kycSelfie) return;
         if (kycStage === 'pending') {
@@ -452,5 +795,18 @@ export function useKycViewModel() {
     api,
     accForm.name,
     kycQuery.data,
+    feedbackUrls,
   ]);
+
+  return {
+    ...model,
+    camera,
+    openCamera,
+    closeCamera,
+    acceptDocument,
+    acceptSelfie,
+    startSelfie,
+    selfiePreview,
+    selfieUploading,
+  };
 }

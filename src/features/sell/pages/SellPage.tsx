@@ -205,9 +205,15 @@ export function SellPage() {
                 </div>
 
                 <div style={css(vm.lbl)}>Photos of your mineral *</div>
-                <div
+                <label
+                  htmlFor="sell-photos"
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={(event) => {
+                    event.preventDefault();
+                    vm.addSellPhotos(event.dataTransfer.files);
+                  }}
                   style={css(
-                    'border:1.5px dashed #cdd4e6; border-radius:16px; padding:32px; text-align:center; background:#f9fafd;',
+                    'display:block; border:1.5px dashed #cdd4e6; border-radius:16px; padding:32px; text-align:center; background:#f9fafd; cursor:pointer;',
                   )}
                 >
                   <div
@@ -237,21 +243,46 @@ export function SellPage() {
                   <div style={css('font-size:12.5px; color:#8b95b4; margin-top:4px;')}>
                     JPG or PNG · up to 10 MB each
                   </div>
-                </div>
+                </label>
+                <input
+                  id="sell-photos"
+                  type="file"
+                  accept="image/jpeg,image/png"
+                  multiple
+                  aria-label="Photos of your mineral"
+                  onChange={(event) => {
+                    vm.addSellPhotos(event.target.files);
+                    event.target.value = '';
+                  }}
+                  style={css('position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0;')}
+                />
                 <div
                   style={css(
                     'display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin-top:14px;',
                   )}
                 >
                   {vm.sellPhotos.map((p) => (
-                    <div
-                      key={p.i}
-                      style={css(
-                        'aspect-ratio:1; border-radius:12px; background:' +
-                          p.bg +
-                          '; border:1px solid #eef1f8;',
-                      )}
-                    />
+                    <div key={p.i} style={css(p.box)}>
+                      {p.previewUrl ? (
+                        <img
+                          src={p.previewUrl}
+                          alt={p.name}
+                          style={css('width:100%; height:100%; object-fit:cover; display:block;')}
+                        />
+                      ) : null}
+                      {p.previewUrl ? (
+                        <button
+                          type="button"
+                          aria-label={p.removeLabel}
+                          onClick={p.remove}
+                          style={css(
+                            'position:absolute; left:8px; right:8px; bottom:8px; border:0; border-radius:8px; padding:6px 8px; background:rgba(20,26,46,.82); color:#fff; font-size:12px; font-weight:700; cursor:pointer;',
+                          )}
+                        >
+                          Remove
+                        </button>
+                      ) : null}
+                    </div>
                   ))}
                 </div>
 

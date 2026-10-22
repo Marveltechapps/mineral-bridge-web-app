@@ -130,6 +130,15 @@ export interface Chapter {
   grad: string;
 }
 
+export interface SellPhoto {
+  id: string;
+  name: string;
+  /** Local object URL shown in the photo card. */
+  previewUrl: string;
+  /** Set after the file is stored by the API. */
+  fileId?: string;
+}
+
 export interface SellForm {
   mineral: string;
   customMineral: string;
@@ -141,6 +150,7 @@ export interface SellForm {
   payout: string;
   city: string;
   country: string;
+  photos: SellPhoto[];
 }
 
 export interface AccountForm {

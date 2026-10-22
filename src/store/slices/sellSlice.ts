@@ -19,6 +19,7 @@ export const sellInitial: SellSlice = {
     payout: 'Bank transfer',
     city: '',
     country: '',
+    photos: [],
   },
 };
 
