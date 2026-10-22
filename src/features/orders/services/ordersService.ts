@@ -68,8 +68,14 @@ export async function listOrders(signal?: AbortSignal): Promise<Order[]> {
 export interface OrderQuote {
   subtotal: Money;
   platformFee: Money;
+  platformFeeRate?: number;
+  paymentSurcharge?: Money | null;
   total: Money;
   quoteId: string;
+  minOrder?: { value: number; unit: string };
+  meetsMinimum?: boolean;
+  withinAvailable?: boolean;
+  availableQuantity?: { value: number; unit: string };
 }
 
 export function quoteOrder(

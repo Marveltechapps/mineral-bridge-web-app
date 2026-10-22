@@ -235,28 +235,30 @@ export function ProductPage() {
             </span>
             <span style={css('font-size:14px; color:#8b95b4;')}>/ {active.unit}</span>
           </div>
-          <div
-            style={css(
-              'display:flex; align-items:center; gap:8px; margin:16px 0 20px; padding:13px 15px; background:#f0f9f4; border-radius:12px;',
-            )}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="#16a34a"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
+          {vm.stockNote ? (
+            <div
+              style={css(
+                'display:flex; align-items:center; gap:8px; margin:16px 0 20px; padding:13px 15px; background:#f0f9f4; border-radius:12px;',
+              )}
             >
-              <polyline points="20 6 9 17 4 12" />
-            </svg>
-            <span style={css('font-size:12.5px; font-weight:700; color:#16a34a;')}>
-              {active.stock} in stock
-            </span>
-          </div>
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#16a34a"
+                strokeWidth="2.4"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                aria-hidden="true"
+              >
+                <polyline points="20 6 9 17 4 12" />
+              </svg>
+              <span style={css('font-size:12.5px; font-weight:700; color:#16a34a;')}>
+                {vm.stockNote}
+              </span>
+            </div>
+          ) : null}
 
           <div
             style={css(
@@ -293,6 +295,20 @@ export function ProductPage() {
               +
             </button>
           </div>
+          {vm.minOrderNote ? (
+            <div style={css('font-size:13px; font-weight:700; color:#1e2a5a; margin:-6px 0 12px;')}>
+              {vm.minOrderNote}
+            </div>
+          ) : null}
+          {vm.qtyWarning ? (
+            <div
+              style={css(
+                'font-size:13px; font-weight:700; color:#9a4a06; background:#fff7ed; border:1px solid #fcd9a8; border-radius:12px; padding:12px 14px; margin:-2px 0 14px; line-height:1.45;',
+              )}
+            >
+              {vm.qtyWarning}
+            </div>
+          ) : null}
 
           <div
             style={css(
@@ -304,9 +320,15 @@ export function ProductPage() {
               <span style={css('font-weight:800; color:#141a2e;')}>{vm.estSubtotal}</span>
             </div>
             <div style={css('display:flex; justify-content:space-between; font-size:13.5px;')}>
-              <span style={css('color:#6b7290;')}>Platform fee (1%)</span>
+              <span style={css('color:#6b7290;')}>{vm.feeLabel}</span>
               <span style={css('font-weight:800; color:#141a2e;')}>{vm.estFee}</span>
             </div>
+            {vm.estSurcharge ? (
+              <div style={css('display:flex; justify-content:space-between; font-size:13.5px;')}>
+                <span style={css('color:#6b7290;')}>Payment surcharge</span>
+                <span style={css('font-weight:800; color:#141a2e;')}>{vm.estSurcharge}</span>
+              </div>
+            ) : null}
             <div
               style={css(
                 'display:flex; justify-content:space-between; font-size:16px; margin-top:4px;',

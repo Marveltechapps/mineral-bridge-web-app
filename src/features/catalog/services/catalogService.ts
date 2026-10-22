@@ -95,6 +95,7 @@ interface WebLot {
   origin?: { region?: string | null; country?: string };
   unitPrice?: { price?: { amount?: number; currency?: string } };
   available?: { value?: number; unit?: string };
+  minOrder?: { value?: number; unit?: string };
   imageUrl?: string | null;
   listPrice?: number | null;
   priceUnit?: string | null;
@@ -149,6 +150,10 @@ export function lotToProduct(lot: WebLot): Product {
     region: lot.origin?.region || (lot.origin?.country && lot.origin.country !== 'unspecified' ? lot.origin.country : ''),
     price,
     unit: lot.priceUnit || 'g',
+    availableValue: lot.available?.value,
+    availableUnit: lot.available?.unit,
+    minOrderValue: lot.minOrder?.value,
+    minOrderUnit: lot.minOrder?.unit,
     stock:
       lot.available && (lot.available.value ?? 0) > 0
         ? `${lot.available.value} ${lot.available.unit ?? ''}`.trim()

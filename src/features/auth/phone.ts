@@ -58,6 +58,34 @@ export function findDialCountry(iso: string): DialCountry | undefined {
 }
 
 /**
+ * Turns what a person types for a country into an ISO code.
+ * Accepts `IN`, `India`, `+91`, and `+91 India`. Shared calling codes such as
+ * `+1` still need the country name.
+ */
+export function resolveCountryCode(input: string): CountryCode | null {
+  const text = input.trim();
+  if (!text) return null;
+  const upper = text.toUpperCase();
+  if (/^[A-Z]{2}$/.test(upper) && isSupportedCountry(upper)) return upper;
+
+  const countries = listDialCountries();
+  const byName = (name: string) => countries.find((country) => country.name.toLowerCase() === name.toLowerCase());
+  const exact = byName(text);
+  if (exact) return exact.iso;
+
+  const dial = text.match(/^\+?(\d{1,3})\b/);
+  const remainder = text.replace(/^\+?\d{1,3}\s*/, '').trim();
+  if (remainder) {
+    const named = byName(remainder);
+    if (named) return named.iso;
+  }
+  if (!dial) return null;
+  const matches = countries.filter((country) => country.dial === dial[1]);
+  if (matches.length === 1) return matches[0].iso;
+  return null;
+}
+
+/**
  * Browser region when it is a real country in the phone metadata.
  * Otherwise the marketplace default (South Africa), which the account
  * form already uses. The selector is never locked to that default.

@@ -62,6 +62,11 @@ export interface Product {
   price: string;
   unit: string;
   stock: string;
+  /** Grams the catalog actually has on hand. Zero means availability was not recorded. */
+  availableValue?: number;
+  availableUnit?: string;
+  minOrderValue?: number;
+  minOrderUnit?: string;
   grad: string;
 }
 
@@ -137,6 +142,8 @@ export interface SellPhoto {
   previewUrl: string;
   /** Set after the file is stored by the API. */
   fileId?: string;
+  /** The preview is still listed, but the original file can no longer be read. */
+  unavailable?: boolean;
 }
 
 export interface SellForm {

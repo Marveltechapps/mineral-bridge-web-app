@@ -270,6 +270,26 @@ export function SellPage() {
                           style={css('width:100%; height:100%; object-fit:cover; display:block;')}
                         />
                       ) : null}
+                      {p.previewUrl && p.unavailable ? (
+                        <label
+                          style={css(
+                            'position:absolute; left:8px; right:8px; bottom:40px; border-radius:8px; padding:6px 8px; background:#b45309; color:#fff; font-size:12px; font-weight:700; cursor:pointer; text-align:center;',
+                          )}
+                        >
+                          Choose again
+                          <input
+                            type="file"
+                            accept="image/jpeg,image/png"
+                            aria-label={p.chooseAgainLabel}
+                            onChange={(event) => {
+                              const file = event.target.files?.[0];
+                              event.target.value = '';
+                              if (file) p.replace(file);
+                            }}
+                            style={css('position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); border:0;')}
+                          />
+                        </label>
+                      ) : null}
                       {p.previewUrl ? (
                         <button
                           type="button"
@@ -340,7 +360,7 @@ export function SellPage() {
                     <input
                       value={vm.sellForm.country}
                       onChange={vm.sfCountry}
-                      placeholder="Country"
+                      placeholder="Country name or code, such as India"
                       aria-label="Country"
                       style={css(vm.inp)}
                     />

@@ -6,7 +6,18 @@ import { isApiConfigured } from '@/lib/api/config';
 import { http } from '@/lib/api/client';
 import { CATS, PRODUCTS } from '@/constants/catalog';
 import { getMinerals } from '@/features/catalog/services/catalogService';
+import { countryName, resolveCountryCode } from '@/features/auth/phone';
 import { uploadFile } from '@/lib/api/uploads';
+import {
+  asUploadableImage,
+  holdSellPhotoFile,
+  prepareSellPhotoUploads,
+  releaseSellPhoto,
+  sellPhotoFile,
+  rememberedSellFileId,
+  rememberSellFileId,
+  sellPhotoProblemMessage,
+} from '@/features/sell/sellPhotoFiles';
 import { FIELD } from '@/constants/tokens';
 import type { SellPhoto } from '@/types';
 import { money } from '@/utils/format';
@@ -14,15 +25,16 @@ import { money } from '@/utils/format';
 const MAX_SELL_PHOTOS = 4;
 const MIN_SELL_PHOTOS = 3;
 const MAX_PHOTO_BYTES = 10 * 1024 * 1024;
-const pendingPhotoFiles = new Map<string, File>();
 const photoUploads = new Map<string, Promise<string>>();
 
 function storeSellPhoto(photoId: string, file: File): Promise<string> {
+  const known = rememberedSellFileId(photoId);
+  if (known) return Promise.resolve(known);
   const existing = photoUploads.get(photoId);
   if (existing) return existing;
-  const task = uploadFile(file, 'listing-photo')
+  const task = uploadFile(asUploadableImage(file), 'listing-photo')
     .then((fileId) => {
-      pendingPhotoFiles.delete(photoId);
+      rememberSellFileId(photoId, fileId);
       return fileId;
     })
     .catch((error: unknown) => {
@@ -57,9 +69,8 @@ function previewFor(file: File): Promise<string> {
 
 function releasePhoto(photo: SellPhoto | undefined) {
   if (!photo) return;
-  pendingPhotoFiles.delete(photo.id);
   photoUploads.delete(photo.id);
-  if (photo.previewUrl.startsWith('blob:')) URL.revokeObjectURL(photo.previewUrl);
+  releaseSellPhoto(photo);
 }
 
 /** Indicative gross rate the design applies to a seller's declared quantity. */
@@ -174,16 +185,31 @@ export function useSellViewModel() {
           return;
         }
       }
-      if (cur === 2 && !sf.city.trim()) {
-        setState({
-          modal: {
-            title: 'Location needed',
-            body: 'Enter the city or site where the verification team should visit you.',
-            confirmLabel: 'Got it',
-            confirm: () => setState({ modal: null }),
-          },
-        });
-        return;
+      if (cur === 2) {
+        if (!sf.city.trim()) {
+          setState({
+            modal: {
+              title: 'Location needed',
+              body: 'Enter the city or site where the verification team should visit you.',
+              confirmLabel: 'Got it',
+              confirm: () => setState({ modal: null }),
+            },
+          });
+          return;
+        }
+        if (!resolveCountryCode(sf.country)) {
+          setState({
+            modal: {
+              title: 'Country needed',
+              body: sf.country.trim()
+                ? `“${sf.country.trim()}” is not a country we can use for the verification visit. Enter the country name or its 2-letter code, such as India or IN.`
+                : 'Enter the country for the verification visit, such as India or IN.',
+              confirmLabel: 'Got it',
+              confirm: () => setState({ modal: null }),
+            },
+          });
+          return;
+        }
       }
       if (cur === 3) {
         if (!authed) {
@@ -206,14 +232,16 @@ export function useSellViewModel() {
             const chosen = mineralOptions.find((m) => m.v === sf.mineral);
             const form = sf.form === 'Semi-finished' ? 'semi_finished' : sf.form === 'Finished' ? 'finished' : 'raw';
             const slot = sf.slot.toLowerCase();
-            const country = sf.country.trim();
-            if (country.length !== 2) {
+            const country = resolveCountryCode(sf.country);
+            if (!country) {
               setState({
                 modal: {
-                  title: 'Country code needed',
-                  body: 'Enter the 2-letter country code for the verification visit, such as GH or ZA.',
+                  title: 'Country needed',
+                  body: sf.country.trim()
+                    ? `“${sf.country.trim()}” is not a country we can use for the verification visit. Enter the country name or its 2-letter code, such as India or IN.`
+                    : 'Enter the country for the verification visit, such as India or IN.',
                   confirmLabel: 'Got it',
-                  confirm: () => setState({ modal: null }),
+                  confirm: () => setState({ modal: null, sellStep: 2 }),
                 },
               });
               return;
@@ -221,28 +249,51 @@ export function useSellViewModel() {
             submitting.current = true;
             const photos = sf.photos ?? [];
             void (async () => {
-              const photoFileIds = await Promise.all(photos.map(async (photo) => {
-                if (photo.fileId) return photo.fileId;
-                const file = pendingPhotoFiles.get(photo.id);
-                if (!file) throw new Error(`Choose ${photo.name} again.`);
-                return storeSellPhoto(photo.id, file);
+              const prepared = await prepareSellPhotoUploads(photos, storeSellPhoto);
+              const savedIds = new Map(prepared.saved.map((item) => [item.id, item.fileId]));
+              const missingIds = new Set(prepared.missing.map((item) => item.id));
+              const problem = sellPhotoProblemMessage(prepared.missing, prepared.failed);
+              setState((s) => ({
+                sellForm: {
+                  ...s.sellForm,
+                  photos: (s.sellForm.photos ?? []).map((item) => ({
+                    ...item,
+                    fileId: savedIds.get(item.id) ?? item.fileId,
+                    unavailable: missingIds.has(item.id),
+                  })),
+                },
+                ...(problem
+                  ? {
+                      modal: {
+                        title: missingIds.size ? 'Choose a photo again' : 'Listing was not submitted',
+                        body: problem,
+                        confirmLabel: missingIds.size ? 'Choose photo' : 'Close',
+                        confirm: () => setState(missingIds.size ? { modal: null, sellStep: 1 } : { modal: null }),
+                      },
+                    }
+                  : {}),
               }));
-              return http.post('/listings', {
+              if (problem) return false;
+              await http.post('/listings', {
                 mineralId: sf.mineral === '__other' ? null : sf.mineral,
                 customMineralName: sf.mineral === '__other' ? sf.customMineral : chosen?.label,
                 quantity: { value: parseFloat(sf.qty) || 0, unit: sf.unit },
                 form,
                 verificationAddress: {
                   city: sf.city || 'Unspecified',
-                  country: country.toUpperCase(),
+                  country,
+                  countryName: countryName(country),
                 },
                 preferredSlot: slot === 'morning' || slot === 'afternoon' ? slot : 'flexible',
                 payoutPreference: sf.payout || 'Bank transfer',
-                photoFileIds,
+                photoFileIds: prepared.fileIds,
                 submit: true,
               }, { headers: { 'Idempotency-Key': crypto.randomUUID() } });
+              return true;
             })()
-              .then(() => setState({ sellStep: 4 }))
+              .then((submitted) => {
+                if (submitted) setState({ sellStep: 4 });
+              })
               .catch((error: unknown) => {
                 setState({
                   modal: {
@@ -290,7 +341,11 @@ export function useSellViewModel() {
         { k: 'Photos', v: String((sf.photos ?? []).length) },
         {
           k: 'Verification location',
-          v: (sf.city || 'Not set') + (sf.country ? ', ' + sf.country : ''),
+          v: (() => {
+            const code = resolveCountryCode(sf.country);
+            const label = code ? countryName(code) : sf.country.trim();
+            return (sf.city || 'Not set') + (label ? ', ' + label : '');
+          })(),
         },
       ],
       sellNextSteps: [
@@ -344,7 +399,59 @@ export function useSellViewModel() {
           name: photo?.name ?? '',
           previewUrl: photo?.previewUrl ?? '',
           saved: Boolean(photo?.fileId),
+          unavailable: Boolean(photo?.unavailable),
           removeLabel: photo ? `Remove ${photo.name}` : '',
+          chooseAgainLabel: photo ? `Choose ${photo.name} again` : '',
+          replace: (file: File) => {
+            if (!photo) return;
+            if (!isJpegOrPng(file) || file.size <= 0 || file.size > MAX_PHOTO_BYTES) {
+              setState({
+                modal: {
+                  title: 'Photo was not added',
+                  body: 'Use a JPG or PNG file, up to 10 MB. Your other listing details are unchanged.',
+                  confirmLabel: 'Got it',
+                  confirm: () => setState({ modal: null }),
+                },
+              });
+              return;
+            }
+            const replacedId = photo.id;
+            releasePhoto(photo);
+            const id = crypto.randomUUID();
+            holdSellPhotoFile(id, file);
+            void previewFor(file).then((previewUrl) => {
+              const next: SellPhoto = { id, name: file.name || 'photo', previewUrl };
+              setState((s) => ({
+                sellForm: {
+                  ...s.sellForm,
+                  photos: (s.sellForm.photos ?? []).map((item) => (item.id === replacedId ? next : item)),
+                },
+              }));
+              if (api && authed) {
+                void storeSellPhoto(id, file)
+                  .then((fileId) => {
+                    setState((s) => ({
+                      sellForm: {
+                        ...s.sellForm,
+                        photos: (s.sellForm.photos ?? []).map((item) => (item.id === id ? { ...item, fileId } : item)),
+                      },
+                    }));
+                  })
+                  .catch((error: unknown) => {
+                    setState({
+                      modal: {
+                        title: 'Photo was not uploaded',
+                        body: error instanceof Error
+                          ? `${next.name} could not be uploaded (${error.message}). It is still shown, and the rest of this listing is unchanged. Submit again to retry it.`
+                          : `${next.name} could not be uploaded. It is still shown, and the rest of this listing is unchanged. Submit again to retry it.`,
+                        confirmLabel: 'Close',
+                        confirm: () => setState({ modal: null }),
+                      },
+                    });
+                  });
+              }
+            });
+          },
           box:
             'position:relative; aspect-ratio:1; border-radius:12px; overflow:hidden; background:' +
             (photo?.previewUrl ? '#111' : '#eef1f8') +
@@ -369,7 +476,7 @@ export function useSellViewModel() {
         photoSlots.current += next.length;
         void Promise.all(next.map(async (file) => {
           const id = crypto.randomUUID();
-          pendingPhotoFiles.set(id, file);
+          holdSellPhotoFile(id, file);
           const photo: SellPhoto = { id, name: file.name || 'photo', previewUrl: await previewFor(file) };
           return photo;
         })).then((photos) => {
@@ -383,23 +490,25 @@ export function useSellViewModel() {
           });
           if (api && authed) {
             for (const photo of photos) {
-              const file = pendingPhotoFiles.get(photo.id);
-              if (!file) continue;
-              void storeSellPhoto(photo.id, file)
-                .then((fileId) => {
-                  pendingPhotoFiles.delete(photo.id);
-                  setState((s) => ({
-                    sellForm: {
-                      ...s.sellForm,
-                      photos: (s.sellForm.photos ?? []).map((item) => (item.id === photo.id ? { ...item, fileId } : item)),
-                    },
-                  }));
+              void sellPhotoFile(photo)
+                .then((file) => {
+                  if (!file) return;
+                  return storeSellPhoto(photo.id, file).then((fileId) => {
+                    setState((s) => ({
+                      sellForm: {
+                        ...s.sellForm,
+                        photos: (s.sellForm.photos ?? []).map((item) => (item.id === photo.id ? { ...item, fileId, unavailable: false } : item)),
+                      },
+                    }));
+                  });
                 })
                 .catch((error: unknown) => {
                   setState({
                     modal: {
                       title: 'Photo was not uploaded',
-                      body: error instanceof Error ? error.message : 'The photo could not be saved. It is still shown below so you can try again.',
+                      body: error instanceof Error
+                        ? `${photo.name} could not be uploaded (${error.message}). It is still shown, and the rest of this listing is unchanged. Submit again to retry it.`
+                        : `${photo.name} could not be uploaded. It is still shown, and the rest of this listing is unchanged. Submit again to retry it.`,
                       confirmLabel: 'Close',
                       confirm: () => setState({ modal: null }),
                     },

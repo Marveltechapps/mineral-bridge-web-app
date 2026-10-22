@@ -8,10 +8,23 @@ import {
   nationalDigits,
   prepareLogin,
   prepareSignup,
+  resolveCountryCode,
   searchCountries,
   signupChannels,
   toE164,
 } from '@/features/auth/phone';
+
+describe('country text', () => {
+  it('accepts a name, a code, or a calling-code prefix', () => {
+    expect(resolveCountryCode('IN')).toBe('IN');
+    expect(resolveCountryCode('India')).toBe('IN');
+    expect(resolveCountryCode('+91 India')).toBe('IN');
+    expect(resolveCountryCode('+91')).toBe('IN');
+    expect(resolveCountryCode('GH')).toBe('GH');
+    expect(resolveCountryCode('+1')).toBeNull();
+    expect(resolveCountryCode('')).toBeNull();
+  });
+});
 
 describe('international phone numbers', () => {
   it('normalizes a national number with the selected country, not a fixed +27', () => {

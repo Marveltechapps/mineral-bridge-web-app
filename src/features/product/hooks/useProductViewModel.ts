@@ -7,6 +7,8 @@ import { PRODUCTS } from '@/constants/catalog';
 import { catalogKeys, getLot, getLots } from '@/features/catalog/services/catalogService';
 import { createOrder, quoteOrder } from '@/features/orders/services/ordersService';
 import { passportId } from '@/features/passport/hooks/usePassportViewModel';
+import { minimumInUnit, minimumOrderWarning } from '@/features/product/minimumOrder';
+import { ApiError } from '@/lib/api/ApiError';
 import { money, num } from '@/utils/format';
 
 /** Settlement options offered on the purchase panel. */
@@ -95,8 +97,24 @@ export function useProductViewModel() {
 
     const qtyN = qty || 0;
     const quoted = quoteQuery.data;
-    const sub = quoted ? quoted.subtotal.amount / 100 : api ? 0 : num(ap.price) * qtyN;
-    const fee = quoted ? quoted.platformFee.amount / 100 : api ? 0 : sub * 0.01;
+    const minValue = quoted?.minOrder?.value ?? ap.minOrderValue;
+    const minUnit = quoted?.minOrder?.unit ?? ap.minOrderUnit ?? unit;
+    const shownMin = minValue && minValue > 0 ? minimumInUnit(minValue, minUnit, unit) : null;
+    const belowMinimum = minimumOrderWarning(qtyN, unit, shownMin?.value, shownMin?.unit);
+    const available = quoted?.availableQuantity;
+    const availableShown = available && available.value > 0 ? minimumInUnit(available.value, available.unit || unit, unit) : null;
+    const stockWarning =
+      !belowMinimum && quoted?.withinAvailable === false && availableShown
+        ? `Only ${availableShown.value} ${availableShown.unit} is available. Reduce the quantity to continue.`
+        : '';
+    const qtyWarning = belowMinimum || stockWarning || null;
+    const listed = num(ap.price);
+    const quotedSub = quoted ? quoted.subtotal.amount / 100 : null;
+    const sub = quotedSub != null && quotedSub > 0 ? quotedSub : listed > 0 ? listed * qtyN : 0;
+    const fee = quotedSub != null && quotedSub > 0 && quoted ? quoted.platformFee.amount / 100 : sub * (quoted?.platformFeeRate ?? 0.01);
+    const surcharge = quotedSub != null && quotedSub > 0 && quoted?.paymentSurcharge ? quoted.paymentSurcharge.amount / 100 : 0;
+    const feeRate = quoted?.platformFeeRate ?? 0.01;
+    const stockKnown = (ap.availableValue ?? 0) > 0;
 
     const provEvents: [string, string, string, string][] = api ? [] : [
       ['Extracted and registered', `${ap.region} · GPS-verified site`, '01 Oct 2026', '0x2f81…a913'],
@@ -166,9 +184,14 @@ export function useProductViewModel() {
       prov,
       settle,
       qty: String(qtyN),
+      stockNote: stockKnown ? `${ap.availableValue} ${ap.availableUnit || unit} in stock` : '',
+      minOrderNote: shownMin ? `Minimum order: ${shownMin.value} ${shownMin.unit}` : '',
+      qtyWarning: qtyWarning ?? '',
+      feeLabel: `Platform fee (${Number((feeRate * 100).toFixed(2))}%)`,
       estSubtotal: money(sub),
       estFee: money(fee),
-      estTotal: money(sub + fee),
+      estSurcharge: surcharge > 0 ? money(surcharge) : '',
+      estTotal: money(sub + fee + surcharge),
       qtyDec: () => setState((s) => ({ qty: Math.max(0, (s.qty || 0) - 1) })),
       qtyInc: () => setState((s) => ({ qty: (s.qty || 0) + 1 })),
       setQty: (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -190,6 +213,17 @@ export function useProductViewModel() {
               go('orders');
               return;
             }
+            if (qtyWarning) {
+              setState({
+                modal: {
+                  title: 'Order was not placed',
+                  body: qtyWarning,
+                  confirmLabel: 'Close',
+                  confirm: () => setState({ modal: null }),
+                },
+              });
+              return;
+            }
             void createOrder({
               lotId: ap.id,
               quantity: { value: qtyN || 1, unit },
@@ -201,10 +235,12 @@ export function useProductViewModel() {
                 go('orders');
               })
               .catch((error: unknown) => {
+                const detail = error instanceof ApiError ? error.fields?.quantity : undefined;
+                const message = error instanceof Error ? error.message : 'The order could not be saved.';
                 setState({
                   modal: {
                     title: 'Order was not placed',
-                    body: error instanceof Error ? error.message : 'The order could not be saved.',
+                    body: detail && !message.includes(detail) ? `${message} ${detail}` : message,
                     confirmLabel: 'Close',
                     confirm: () => setState({ modal: null }),
                   },
