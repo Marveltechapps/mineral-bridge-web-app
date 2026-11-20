@@ -7,6 +7,10 @@ const proxyTarget = (process.env.API_PROXY_TARGET || '').replace(/\/+$/, '');
 
 const nextConfig: NextConfig = {
   output: 'standalone',
+  experimental: {
+    // Marks this checkout as the security-agent upgrade path (Next.js 16.4.6).
+    agentUpgrade: 'security',
+  },
   async rewrites() {
     return proxyTarget ? [{ source: '/v2/:path*', destination: `${proxyTarget}/v2/:path*` }] : [];
   },
