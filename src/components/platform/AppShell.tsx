@@ -9,6 +9,7 @@ import { CartScreen } from './screens/CartScreen';
 import { CategoriesScreen } from './screens/CategoriesScreen';
 import { ChatScreen } from './screens/ChatScreen';
 import { CheckoutScreen } from './screens/CheckoutScreen';
+import { ContactOtpScreen } from './screens/ContactOtpScreen';
 import { ContractScreen } from './screens/ContractScreen';
 import { DocumentScreen } from './screens/DocumentScreen';
 import { EditProfileScreen } from './screens/EditProfileScreen';
@@ -42,6 +43,8 @@ import { SellSubmittedScreen } from './screens/SellSubmittedScreen';
 import { SellerConfirmationScreen } from './screens/SellerConfirmationScreen';
 import { ShipmentScreen } from './screens/ShipmentScreen';
 import { SubcategoriesScreen } from './screens/SubcategoriesScreen';
+import { SupportInboxScreen } from './screens/SupportInboxScreen';
+import { SupportThreadScreen } from './screens/SupportThreadScreen';
 import { WelcomeScreen } from './screens/WelcomeScreen';
 import { ActionBar } from './shell/ActionBar';
 import { AppHeader } from './shell/AppHeader';
@@ -108,10 +111,13 @@ export function AppShell({ vm }: { vm: ViewModel }) {
                 {vm.is?.doc ? <DocumentScreen vm={vm} /> : null}
                 {vm.is?.profile ? <ProfileScreen vm={vm} /> : null}
                 {vm.is?.editProfile ? <EditProfileScreen vm={vm} /> : null}
+                {vm.is?.contactOtp ? <ContactOtpScreen vm={vm} /> : null}
                 {vm.is?.kycStatus ? <KycStatusScreen vm={vm} /> : null}
                 {vm.is?.notifs ? <NotificationsScreen vm={vm} /> : null}
                 {vm.is?.prefs ? <NotificationChannelsScreen vm={vm} /> : null}
                 {vm.is?.help ? <HelpScreen vm={vm} /> : null}
+                {vm.is?.support ? <SupportInboxScreen vm={vm} /> : null}
+                {vm.is?.supportThread ? <SupportThreadScreen vm={vm} /> : null}
               </div>
               {vm.web?.split ? <SummaryAside vm={vm} /> : null}
             </div>

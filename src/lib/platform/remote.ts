@@ -360,7 +360,7 @@ export class Remote {
       const me = await meSvc.patchMe({ fullName: f.name.trim(), ...(f.business.trim() ? { businessName: f.business.trim() } : {}), ...(code ? { countryCode: code } : {}) });
       this.s.setState(x => ({ user: mapMeToUser(me, x.user), editErr: {} }));
       const contactChanged = !!u && ((f.email || '').trim() !== (u.email || '') || (f.phone || '').trim() !== (u.phone || ''));
-      this.s.flash(contactChanged ? 'Name and business saved. Phone and email changes need code verification and are not available on web yet; contact support to change them.' : 'Profile saved');
+      this.s.flash(contactChanged ? 'Name and business saved. To change your phone or email, tap Change and verify the new one with a code.' : 'Profile saved');
       this.s.back();
     }, { onFail: e => { const fe = this.fieldErrs(e); const map: Errs = {}; if (fe.fullName) map.name = fe.fullName; if (fe.businessName) map.business = fe.businessName; if (fe.countryCode) map.country = fe.countryCode; if (Object.keys(map).length) this.s.err('editErr', map); else this.s.flash(apiMessage(e)); } });
   }

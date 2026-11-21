@@ -4,10 +4,11 @@
 import { MB4 } from './data';
 import { compressImage, imageUrl } from '../images';
 import { pendingVariation, resolveCountryCode } from '../mappers';
-import { Remote, IS_DEV, fmtBytes } from './remote';
+import { Remote, IS_DEV, fmtBytes, contactIdentifier } from './remote';
 import type { RemoteHost } from './remote';
 import { EMPTY_USER, emptyDraft, emptyRefund, fresh as freshState } from './state';
-import type { ProductDocumentType } from '../../api/types';
+import { statusTone, topicLabel } from './supportVals';
+import type { OtpChannel, ProductDocumentType } from '../../api/types';
 
 type AnyObj = Record<string, any>;
 /** Demo / simulation helpers (screen rail, "Simulate" buttons, sample KYC files). Off unless explicitly enabled in a non-production build. */
@@ -84,7 +85,7 @@ export class PlatformController {
     const onboard = ONB.includes(scr);
     const railOpen = !!s.webRail;
     const rail = (v.rail || []).map((g?: any) => ({ ...g, items: (g.items || []).map((r?: any) => ({ ...r, tap: () => { this.setState({ webRail:false }); r.tap && r.tap(); } })) }));
-    const split = !onboard && !WIDE.includes(scr) && !['chat', 'placed', 'sellDone', 'doc', 'cart'].includes(scr) || (scr === 'cart' && !!(s.cart || []).length);
+    const split = !onboard && !WIDE.includes(scr) && !['chat', 'placed', 'sellDone', 'doc', 'cart', 'contactOtp', 'support', 'supportThread'].includes(scr) || (scr === 'cart' && !!(s.cart || []).length);
     const sm = this.webSummary(scr, m);
     const lv = s.listView || 'cards';
     return Object.assign({}, v, { rail,
@@ -155,7 +156,7 @@ export class PlatformController {
       if (st.screen === 'pay' && st.pmethod === 'Bitcoin') return this.setState({ tick: Date.now() });
       if (st.screen === 'chat') this.remote.pollChat();
       if (st.screen === 'supportThread') this.remote.pollSupport();
-      if (!['auctions', 'auction', 'orders'].includes(st.screen)) return;
+      if (!['auctions', 'auction', 'orders', 'contactOtp'].includes(st.screen)) return;
       // A live auction past its end time is settled by the server: ask it for the result (at most every 10 s).
       (st.auctions || []).filter((a?: any) => a.status === 'live' && a.endsAt <= Date.now()).forEach((a?: any) => {
         if (Date.now() - (this.dueSeen.get(a.id) || 0) < 10000) return;
@@ -294,7 +295,10 @@ export class PlatformController {
       bizType: { header: 1, canBack: 1, title: 'Account type', cta: 'Save' },
       kycStatus: { header: 1, canBack: 1, title: 'KYC & documents', cta: u && u.kyc === 'none' ? 'Start verification' : '' },
       notifs: { tabs: '', header: 1, canBack: 1, title: 'Notifications' }, prefs: { header: 1, canBack: 1, title: 'Notification channels' },
+      contactOtp: { header: 1, canBack: 1, title: s.contact && s.contact.field === 'email' ? 'Verify new email' : 'Verify new number', cta: s.contactBusy ? 'Verifying…' : 'Verify and save' },
       help: { header: 1, canBack: 1, title: 'Help & support' },
+      support: { header: 1, canBack: 1, title: 'Support messages', cta: 'New message' },
+      supportThread: { header: 1, canBack: 1, title: s.supRef ? s.supRef : 'New message' },
       auctions: { header: 1, canBack: 1, title: 'Auctions' },
       auction: Object.assign({ header: 1, canBack: 1, title: 'Auction' }, this.aucCta()),
       auctionWon: { cta: this.aucWonCta(), cta2: 'Back to auctions' },
@@ -302,7 +306,7 @@ export class PlatformController {
       priceVar: this.varMeta()
     };
     const m = Object.assign({ ctaOpacity: 1, cta2Fg: '#6B6A70' }, META[s.screen] || ({} as AnyObj));
-    if (m.tabs === undefined) m.tabs = ''; if (s.placing || s.authBusy || s.kycBusy || s.varBusy) m.ctaOpacity = .6;
+    if (m.tabs === undefined) m.tabs = ''; if (s.placing || s.authBusy || s.kycBusy || s.contactBusy || s.varBusy) m.ctaOpacity = .6;
     const is: AnyObj = {}; Object.keys(META).forEach((k?: any) => is[k] = s.screen === k);
     const TAB = [['home', 'Home', 'M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['buy', 'Buy', 'M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0'], ['sell', 'Sell', 'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'], ['orders', 'Orders', 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 12h6M9 16h4'], ['profile', 'Profile', 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8']];
     const tabScreen: AnyObj = { home: 'home', buy: 'cats', sell: 'sellCats', orders: 'orders', profile: 'profile' };
@@ -322,7 +326,7 @@ export class PlatformController {
       devTools: DEV_TOOLS, devOtp: IS_DEV ? s.devOtp : '',
       pv: (() => { const p = pendingVariation(o); if (!p) return null; const up = p.to >= p.from; return { from: M.money(p.from), to: M.money(p.to), delta: (up ? '+' : '−') + M.money(Math.abs(p.to - p.from)), up, reason: p.reason, note: p.note || '', busy: !!s.varBusy, err: s.varErr || '', noteVal: s.varNote || '', setNote: (e?: any) => this.setState({ varNote: e.target.value, varErr: '' }), accept: () => this.decideVariation('accept'), reject: () => this.decideVariation('reject') }; })(),
       resetDemo: () => { if (DEV_TOOLS) void this.task(this.remote.signOutLocal('Local state reset')); }
-    }, this.authVals(), this.buyVals(prod), this.orderVals(o, ov), this.sellVals(), this.accountVals(), this.auctionVals(), this.refundVals(o), this.docVals(), this.cancelVals(o));
+    }, this.authVals(), this.buyVals(prod), this.orderVals(o, ov), this.sellVals(), this.accountVals(), this.contactVals(), this.supportVals(), this.auctionVals(), this.refundVals(o), this.docVals(), this.cancelVals(o));
   }
   railJump(id?: any): any {
     if (!DEV_TOOLS) return;
@@ -448,7 +452,13 @@ export class PlatformController {
       editProfile: () => this.saveProfile(),
       bizType: () => this.saveBizType(),
       kycStatus: () => this.go('kyc'),
-      priceVar: () => this.decideVariation('accept')
+      contactOtp: () => {
+        if (s.contactBusy) return;
+        if (!/^\d{4}$/.test(s.contactCode)) return this.setState({ contactErr: 'Enter all 4 digits' });
+        bg(this.remote.verifyContactChange(s.contactCode));
+      },
+      priceVar: () => this.decideVariation('accept'),
+      support: () => this.openSupport('')
     };
     (H[sc] || (() => {}))();
   }
@@ -767,15 +777,81 @@ export class PlatformController {
     };
   }
   saveProfile(): any {
-    const s = this.state, f = s.edit || ({} as AnyObj), e: AnyObj = {}, u = s.user || EMPTY_USER;
+    const s = this.state, f = s.edit || ({} as AnyObj), e: AnyObj = {};
     if ((f.name || '').trim().length < 2) e.name = 'Enter your full name';
     if ((f.business || '').trim().length < 2 && this.bizDocNeeded()) e.business = 'Enter your business name';
     if (f.country && f.country.trim() && !resolveCountryCode(f.country)) e.country = 'Enter a full country name';
-    // Phone and email are not part of PATCH /me: changing them needs a verification code, which this site cannot send yet.
-    if ((f.email || '').trim().toLowerCase() !== (u.email || '').toLowerCase()) e.email = 'To change your email, contact Mineral Bridge support (it needs a verification code)';
-    if (String(f.phone || '').replace(/\D/g, '') !== String(u.phone || '').replace(/\D/g, '')) e.phone = 'To change your number, contact Mineral Bridge support (it needs a verification code)';
+    // Phone and email are not part of PATCH /me: they change only through startContactChange (OTP-verified).
     if (Object.keys(e).length) return this.err('editErr', e);
     void this.task(this.remote.saveProfile(f));
+  }
+  /** Start a phone/email change: validates the new value, then asks the server to send a code to it. */
+  startContactChange(field: 'phone' | 'email', channel: OtpChannel, raw: string): any {
+    const s = this.state, u = s.user;
+    if (s.contactBusy) return;
+    const v = String(raw || '').trim();
+    if (field === 'email') {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(v)) return this.err('editErr', { email: 'Enter a valid email address' });
+      if (u && v.toLowerCase() === (u.email || '').toLowerCase()) return this.err('editErr', { email: 'That is already your email' });
+    } else {
+      const id = contactIdentifier(channel, v, s.auth.cc);
+      const n = id.replace(/\D/g, '').length;
+      if (n < 9 || n > 15) return this.err('editErr', { phone: 'Enter a valid number (9–15 digits, with the country code if it is not ' + (s.auth.cc || '+234') + ')' });
+      if (u && id === u.phone) return this.err('editErr', { phone: 'That is already your number' });
+    }
+    this.setState({ editErr: {} });
+    void this.task(this.remote.startContactChange(channel, contactIdentifier(channel, v, s.auth.cc)));
+  }
+  /** Open one support conversation (`ref === ''` starts a new one). */
+  openSupport(ref: string): any { this.go('supportThread', { supRef: ref, supThread: null, supMsg: '', supErr: '' }); }
+  sendSupport(): any {
+    const s = this.state, t = String(s.supMsg || '').trim();
+    if (s.supBusy || !t) return;
+    void this.task(s.supRef ? this.remote.sendSupportMessage(s.supRef, t) : this.remote.createSupportThread(t));
+  }
+  contactVals(): any {
+    const s = this.state, ch = s.contact, code = String(s.contactCode || '');
+    const WHERE: AnyObj = { whatsapp: 'WhatsApp', sms: 'SMS', email: 'email' };
+    const wait = ch ? Math.max(0, Math.ceil((ch.resendAt - Date.now()) / 1000)) : 0;
+    const off = !!s.contactBusy || wait > 0;
+    return {
+      contactBusy: !!s.contactBusy, editCc: s.auth.cc || '+234',
+      clearEditErr: () => { if (Object.keys(this.state.editErr || {}).length) this.setState({ editErr: {} }); },
+      startContactChange: (field: 'phone' | 'email', channel: OtpChannel, raw: string) => this.startContactChange(field, channel, raw),
+      ct: ch ? {
+        active: true, via: WHERE[ch.channel] || ch.channel, noun: ch.field === 'email' ? 'email' : 'number', to: ch.masked || ch.identifier,
+        code, boxes: [0, 1, 2, 3].map(i => ({ v: code[i] || '', border: code.length === i ? '#121214' : '#E4E2DB' })),
+        setCode: (e?: any) => this.setState({ contactCode: String(e.target.value).replace(/\D/g, '').slice(0, 4), contactErr: '' }),
+        err: s.contactErr, devOtp: IS_DEV ? ch.devOtp : '',
+        resendOff: off, resendFg: wait > 0 || s.contactBusy ? '#8B8A90' : '#8A6A1C', resendLabel: wait > 0 ? 'Resend code in ' + wait + 's' : 'Resend code',
+        resend: () => { if (off) return; void this.task(this.remote.resendContactChange()); }
+      } : { active: false }
+    };
+  }
+  supportVals(): any {
+    const s = this.state, M = X(), list = s.supThreads as any[] | null;
+    const isNew = !s.supRef, th = s.supThread && s.supThread.ref === s.supRef ? s.supThread : null;
+    const tone = th ? statusTone(th.status) : null;
+    const msgs = th ? th.messages : [];
+    return {
+      sup: {
+        loaded: !!list, loading: !!s.supLoading, err: s.supErr,
+        refresh: () => { void this.task(this.remote.loadSupportThreads()); },
+        threads: (list || []).map((t?: any) => {
+          const sub = t.subject && t.subject !== t.topic ? t.subject : '', [pill, pillBg, pillFg] = statusTone(t.status);
+          return { ref: t.ref, title: sub || topicLabel(t.topic), sub: t.ref + ' · ' + topicLabel(t.topic) + ' · ' + M.fmt(Date.parse(t.updatedAt) || Date.now()), pill, pillBg, pillFg, tap: () => this.openSupport(t.ref) };
+        })
+      },
+      th: {
+        isNew, head: isNew ? 'New conversation with Mineral Bridge support' : s.supRef + ' · ' + topicLabel(th ? th.topic : 'general'),
+        pill: tone ? tone[0] : '', pillBg: tone ? tone[1] : '', pillFg: tone ? tone[2] : '',
+        loading: !isNew && !th && !!s.supThreadLoading, resolved: !!th && th.status === 'resolved', err: s.supErr,
+        msgs: msgs.map((m?: any) => ({ id: m.id, me: m.me, system: m.system, who: m.who, text: m.text, at: M.fmt(m.at) })),
+        msg: s.supMsg, busy: !!s.supBusy, sendOpacity: s.supBusy || !String(s.supMsg || '').trim() ? 0.55 : 1,
+        setMsg: (e?: any) => this.setState({ supMsg: String(e.target.value).slice(0, 4000), supErr: '' }),
+        send: () => this.sendSupport()
+      }
+    };
   }
   saveBizType(): any {
     const r = this.state.reg;
@@ -798,7 +874,7 @@ export class PlatformController {
         ['ACTIVITY', [['Auctions', (s.auctions || []).filter((a?: any) => a.status === 'live').length + ' live · ' + (s.auctions || []).filter((a?: any) => (a.mine || a.bids.some((b?: any) => b.who === 'You')) && a.status !== 'ended').length + ' with your bids', 'M14 3.5 20.5 10 17 13.5 10.5 7zM10.5 7 4 13.5 7.5 17 14 10.5M3 21h9', () => this.go('auctions', { atab: 'live' })], ['Refunds', (() => { const n = s.orders.filter((x?: any) => x.refund && !['refunded', 'declined'].includes(x.refund.status)).length; return n ? n + ' in progress' : 'Request and track refunds'; })(), 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5', () => this.go('refunds')], ['Orders & sell requests', s.orders.length + ' in your history', 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 12h6M9 16h4', () => this.jump('orders')], ['Notifications', (s.unread || s.notifs.filter((n?: any) => !n.read).length) + ' unread', 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0', go('notifs')], ['Notification channels', ['email', 'sms', 'whatsapp', 'push'].filter((k?: any) => s.prefs[k]).length + ' of 4 on', 'M4 4h16v12H5.2L4 17.2z', go('prefs')]]],
         ['HELP', [['Help & support', 'Phone, SMS, email, WhatsApp, chat', 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01', go('help')]]]].map(([h, rows]: any) => ({ h, rows: rows.map(([l, sub, icon, tap]: any, i?: any) => ({ l, sub, icon, tap, line: i === rows.length - 1 ? 'transparent' : '#EFEDE7' })) })) : [],
       logout: () => this.setState({ sheet: 'logout' }),
-      editFields: [['name', 'FULL NAME'], ['business', 'BUSINESS NAME'], ['phone', 'MOBILE'], ['email', 'EMAIL'], ['country', 'COUNTRY']].map(([k, l]: any) => ({ l, v: ed[k] || '', err: ee[k] || '', border: ee[k] ? '#B42318' : '#E4E2DB', set: (e?: any) => setE({ [k]: e.target.value }) })),
+      editFields: [['name', 'FULL NAME'], ['business', 'BUSINESS NAME'], ['phone', 'MOBILE'], ['email', 'EMAIL'], ['country', 'COUNTRY']].map(([k, l]: any) => ({ k, l, contact: k === 'phone' || k === 'email', v: ed[k] || '', err: ee[k] || '', border: ee[k] ? '#B42318' : '#E4E2DB', set: (e?: any) => setE({ [k]: e.target.value }) })),
       showTypePicker: s.screen === 'regType' || s.screen === 'bizType', typeTitle: s.screen === 'bizType' ? 'Update your account type' : 'How will you use Mineral Bridge?',
       kycStatusWord: kycWord, kycIsPending: !!u && u.kyc === 'pending', kycIsRejected: !!u && u.kyc === 'rejected', kycIsVerified: !!u && u.kyc === 'verified', kycIsNone: !!u && u.kyc === 'none',
       kycReason: u ? u.kycReason || '' : '', kycSubmitted: u && u.kycAt ? M.fmt(u.kycAt) : '—', kycStatusRef: u ? u.kycRef || '—' : '',
@@ -807,7 +883,7 @@ export class PlatformController {
       noNotifs: !s.notifs.length, readAll: () => { void this.task(this.remote.readAll()); },
             prefRows: [['email', 'Email', (u || ({} as AnyObj)).email || 'Add an email in Edit profile'], ['sms', 'SMS', (u || ({} as AnyObj)).phone || 'Add a mobile number'], ['whatsapp', 'WhatsApp', (u || ({} as AnyObj)).phone || 'Add a mobile number'], ['push', 'App notifications', 'On this device']].map(([k, l, sub]: any) => ({ l, sub, bg: s.prefs[k] ? '#121214' : '#D5D3CC', x: s.prefs[k] ? '20px' : '2px', tap: () => { const on = ['email', 'sms', 'whatsapp', 'push'].filter((q?: any) => s.prefs[q]); if (s.prefs[k] && on.length <= 1) return this.flash('Keep at least one channel on'); void this.task(this.remote.togglePref(k)); } })),
             helpChannels: ((ct?: any) => [['Phone', ct ? ct.phone : 'Loading…', ct ? 'tel:' + ct.phone : '', 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z'], ['SMS', ct ? ct.phone : 'Loading…', ct ? 'sms:' + ct.phone : '', 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'], ['Email', ct ? ct.email : 'Loading…', ct ? 'mailto:' + ct.email : '', 'M4 4h16v16H4zM22 6l-10 7L2 6'], ['WhatsApp', ct ? ct.whatsapp : 'Loading…', ct && ct.whatsapp ? 'https://wa.me/' + String(ct.whatsapp).replace(/\D/g, '') : '', 'M3 21l1.6-5A9 9 0 1 1 8 19.4z']].map(([l, v, href, icon]: any) => ({ l, v, icon, tap: () => { if (!href) { this.flash('Contact details are loading. Try again in a moment.'); void this.task(this.remote.loadFaqs()); return; } window.open(href, l === 'WhatsApp' ? '_blank' : '_self'); } })))(s.contacts),
-            goSupportChat: () => { const o = s.orders.find((x?: any) => !this.view(x).done) || s.orders[0]; if (!o) return this.flash('Chat opens on an order. Use phone, email or WhatsApp for general questions.'); this.go('chat', { oid: o.id }); }, goKycFix: () => this.go('kyc'),
+            goSupportChat: () => { if (!s.user) return this.flash('Sign in to message Mineral Bridge support. You can also use phone, email or WhatsApp.'); this.go('support'); }, goKycFix: () => this.go('kyc'),
       faqs: (s.faqs || []).map(({ q: qq, a }: any, i?: any) => ({ qq, a, open: s.faq === i, sign: s.faq === i ? '−' : '+', tap: () => this.setState({ faq: s.faq === i ? -1 : i }) }))
     };
   }
