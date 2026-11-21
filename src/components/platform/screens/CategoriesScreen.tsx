@@ -61,6 +61,15 @@ export function CategoriesScreen({ vm }: { vm: ViewModel }) {
           </div>
         </div>
       ) : null}
+      {vm.catalogueLoading && !list(vm.cats).length ? (
+        <div style={{ marginTop: '18px', fontSize: '13.5px', color: '#6B6A70' }}>Loading minerals…</div>
+      ) : null}
+      {vm.catalogueErr && !list(vm.cats).length ? (
+        <div style={{ marginTop: '18px', borderRadius: '20px', background: '#fff', border: '1px solid #E4E2DB', padding: '22px' }}>
+          <div style={{ fontSize: '15px', fontWeight: '600' }}>Catalogue unavailable</div>
+          <div style={{ fontSize: '13px', color: '#6B6A70', marginTop: '6px' }}>{vm.catalogueErr}</div>
+        </div>
+      ) : null}
       {vm.notSearching ? (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(340px,1fr))', gap: '12px', marginTop: '14px' }}>
           {list(vm.cats).map((c, index) => (

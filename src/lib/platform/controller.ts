@@ -567,6 +567,7 @@ export class PlatformController {
       homeCats: M.CATS.map((c?: any) => ({ name: c.name, n: M.PRODUCTS.filter((x?: any) => c.minerals.some(([m]: any) => m === x.mineral)).length + ' lots', img: IMG(c.img), tap: () => this.go('minerals', { cat: c.id, search: '' }) })),
       search: s.search, setSearch: (e?: any) => this.setState({ search: e.target.value }), clearSearch: () => this.setState({ search: '' }),
       hasGlobal: global.length > 0, global, noGlobal: !!q && s.screen === 'cats' && !global.length, notSearching: !q,
+      catalogueErr: s.catalogueErr || '', catalogueLoading: !!s.catalogueLoading,
       cats: M.CATS.map((c?: any) => ({ name: c.name, img: IMG(c.img), subs: c.minerals.map((m?: any) => m[1]).join(' · '), n: M.PRODUCTS.filter((x?: any) => c.minerals.some(([m]: any) => m === x.mineral)).length + ' lots', tap: () => this.go('minerals', { cat: c.id, search: '' }) })),
       catName: cat.name, catImg: IMG(cat.img),
       subs: cat.minerals.map(([id, name]: any) => { const n = M.PRODUCTS.filter((x?: any) => x.mineral === id).length; return { name, n: n ? n + (n === 1 ? ' lot' : ' lots') : 'No lots yet', forms: [...new Set(M.PRODUCTS.filter((x?: any) => x.mineral === id).map((x?: any) => x.form))].join(' · ') || 'New listings soon', tap: () => this.go('lots', { mineral: id, fform: 'All', labOnly: false, search: '', sort: 'featured' }) }; }),
