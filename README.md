@@ -8,7 +8,9 @@ cp .env.example .env
 npm run dev
 ```
 
-Web: http://localhost:3000. Set `NEXT_PUBLIC_API_BASE_URL` in `.env` to the service API.
+Web: http://localhost:3000. Set `NEXT_PUBLIC_API_BASE_URL` in `.env` to the service API (default `http://localhost:5001/v2`).
+
+Reference data, roles, and any local sample catalogue are created by the API when it starts. This app does not seed the database and does not ship a login password. Start `mineralbridge-backend` first; a customer account is opened through registration unless `SEED_USER_EMAIL` and `SEED_USER_PASSWORD` were set on a local development database.
 
 Routes use `src/app/**/page.tsx` and `layout.tsx`. Components use PascalCase `.tsx`; helpers, hooks, services, and types use `.ts`. The `@/*` alias points to `src/*`.
 
