@@ -3,7 +3,7 @@
 // renderVals() returns the values the screen components in src/components/platform render against.
 import { MB4 } from './data';
 import { compressImage, imageUrl } from '../images';
-import { pendingVariation, resolveCountryCode } from '../mappers';
+import { kycDocLabel, kycDocRows, kycRequiredDocIds, lotAvailabilityLabel, otpEmailForDisplay, paymentNeedsReference, paymentSubmitError, pendingVariation, productHasLotDocuments, productIsAvailableOnRequest, productIsSoldOut, resolveCountryCode, screenPollsOrders } from '../mappers';
 import { Remote, IS_DEV, fmtBytes, contactIdentifier } from './remote';
 import type { RemoteHost } from './remote';
 import { EMPTY_USER, emptyDraft, emptyRefund, fresh as freshState } from './state';
@@ -156,6 +156,7 @@ export class PlatformController {
       if (st.screen === 'pay' && st.pmethod === 'Bitcoin') return this.setState({ tick: Date.now() });
       if (st.screen === 'chat') this.remote.pollChat();
       if (st.screen === 'supportThread') this.remote.pollSupport();
+      if (screenPollsOrders(st.screen)) this.remote.pollOrders();
       if (!['auctions', 'auction', 'orders', 'contactOtp'].includes(st.screen)) return;
       // A live auction past its end time is settled by the server: ask it for the result (at most every 10 s).
       (st.auctions || []).filter((a?: any) => a.status === 'live' && a.endsAt <= Date.now()).forEach((a?: any) => {
@@ -235,7 +236,10 @@ export class PlatformController {
     const refunded = !!(o.refund && o.refund.status === 'refunded' && o.refund.type === 'full');
     const cx = !!o.cancelled, done = !next || refunded || cx, rej = !!o.rejected || cx;
     const needVar = !!pendingVariation(o) && !rej && !done;
-    const you = needVar || (!!next && next.actor === 'you' && !rej && (!o.hold || o.hold === 'changes'));
+    const nextScreen = next ? next.screen : '';
+    // A declined quotation must not hide a later payment retry (BUG-010).
+    const holdBlocks = !!o.hold && o.hold !== 'changes' && !(o.hold === 'quoteDeclined' && nextScreen && nextScreen !== 'quote');
+    const you = needVar || (!!next && next.actor === 'you' && !rej && !holdBlocks);
     const holdText = o.hold ? (o.holdNote ? (HOLD[o.hold] || 'On hold').split(' · ')[0] + ' · ' + o.holdNote : HOLD[o.hold] || 'On hold') : '';
     const status = rej ? (cx ? 'Cancelled' : 'Rejected') : refunded ? 'Refunded' : done ? 'Completed' : needVar ? 'Action needed' : o.hold ? (HOLD[o.hold] || 'On hold').split(' · ')[0] : you ? 'Action needed' : 'Waiting on ' + ACTOR[next.actor];
     const tone = cx ? ['#F1EFE9', '#3A3940'] : rej ? ['#FDECEA', '#B42318'] : refunded ? ['#EDE9F7', '#4B3B8F'] : done ? ['#E2F2E9', '#17704C'] : you || o.hold ? ['#FBF3E4', '#A1620B'] : ['#F1EFE9', '#3A3940'];
@@ -270,7 +274,7 @@ export class PlatformController {
       home: { tabs: 'home' }, cats: { tabs: 'buy', header: 1, title: 'Buy minerals', cartBtn: 1 },
       minerals: { tabs: 'buy', header: 1, canBack: 1, title: (M.CATS.find((c?: any) => c.id === s.cat) || ({} as AnyObj)).name, cartBtn: 1 },
       lots: { tabs: 'buy', header: 1, canBack: 1, title: M.mineralName(s.mineral), cartBtn: 1 },
-      detail: { header: 1, canBack: 1, title: 'Product details', cartBtn: 1, cta: ((M.product(s.pid) || ({} as AnyObj)).avail > 0) ? 'Add to cart' : 'See other lots' },
+      detail: { header: 1, canBack: 1, title: 'Product details', cartBtn: 1, cta: (() => { const dp = M.product(s.pid); return dp && !productIsSoldOut(dp) ? 'Add to cart' : 'See other lots'; })() },
       cart: { header: 1, canBack: 1, title: 'Cart', cta: s.cart.length ? 'Proceed to checkout' : '' },
       checkout: { header: 1, canBack: 1, title: 'Checkout', cta: s.placing ? 'Placing order…' : 'Place order' },
       placed: { cta: 'Track order', cta2: 'Continue browsing' },
@@ -398,9 +402,11 @@ export class PlatformController {
       },
       kyc: () => {
         if (s.kycBusy) return;
-        const k = s.kyc, need: string[] = [];
-        if (!k.front) need.push('ID front'); if (k.idType !== 'Passport' && !k.back) need.push('ID back'); if (!k.selfie) need.push('selfie'); if (!k.address) need.push('proof of address');
-        if (!k.biz && this.bizDocNeeded()) need.push('business document');
+        const k = s.kyc;
+        const labels: Record<string, string> = { front: 'ID front', back: 'ID back', selfie: 'selfie', address: 'proof of address', biz: 'business document' };
+        const need = kycRequiredDocIds(s.kycReq, k.idType, this.bizDocNeeded())
+          .filter((id) => !k[id])
+          .map((id) => labels[id] ?? id);
         if (need.length) return this.setState({ kycErr: 'Still needed: ' + need.join(', ') });
         const stale = Object.keys(KYC_INFO).filter((id?: any) => this.kycFlag(id));
         if (stale.length) return this.setState({ kycErr: 'Re-upload requested: ' + stale.map((id?: any) => KYC_INFO[id].title.toLowerCase()).join(', ') + '. Replace ' + (stale.length > 1 ? 'them' : 'it') + ' before resubmitting.' });
@@ -415,7 +421,7 @@ export class PlatformController {
       auctionWon: () => this.auctionToOrder(s.aid, true),
       doc: () => this.downloadDoc(),
       kycDoc: () => { if (s.kycUploading) return; if (!s.kyc[s.kycDocId]) return this.setState({ kycDocErr: 'Upload a photo or file first' }); this.flash('Document saved'); this.nextKycDoc(); },
-      detail: () => { const p = M.product(s.pid); if (p && p.avail <= 0) return this.go('lots', { mineral: p.mineral, fform: 'All', labOnly: false, search: '' }); this.addToCart(); },
+      detail: () => { const p = M.product(s.pid); if (p && productIsSoldOut(p)) return this.go('lots', { mineral: p.mineral, fform: 'All', labOnly: false, search: '' }); this.addToCart(); },
       cart: () => { if (!s.cart.length) return; if (!this.gate('checkout')) return; this.prefillShip(); this.go('checkout'); },
       checkout: () => this.placeOrder(),
       placed: () => { this.setState({ stack: ['orders'], screen: 'order' }); this.top(); },
@@ -435,8 +441,7 @@ export class PlatformController {
         if (s.paying || !this.stepOpen()) return;
         const method = s.pmethod || 'UPI';
         if (method === 'Bitcoin') { const tx = (s.btcTx || '').trim(); if (!/^[0-9a-fA-Fx]{16,}$/.test(tx)) return this.setState({ payErr: 'Paste the transaction ID from your wallet (at least 16 characters)' }); }
-        else if (method === 'UPI' || method === 'Net banking') { if ((s.payRef || '').trim().length < 6) return this.setState({ payErr: 'Enter the ' + (method === 'UPI' ? 'UPI' : 'bank') + ' reference of your payment' }); }
-        else if (!s.uploads.proof.length) return this.setState({ payErr: 'Upload the payment receipt first' });
+        else { const err = paymentSubmitError(method, s.payRef || '', !!s.uploads.proof.length); if (err) return this.setState({ payErr: err }); }
         this.setState({ payErr: '' });
         bg(this.remote.submitPay(method));
       },
@@ -512,10 +517,10 @@ export class PlatformController {
     const s = this.state, M = X(), p = M.product(s.pid), qIn = parseFloat(s.qty);
     if (!p) return;
     const u = this.unitOf(p), q = this.conv(qIn, u, p.unit), nf = (v?: any) => M.num(+v.toFixed(6));
-    if (p.avail <= 0) return this.flash('This lot is no longer available');
+    if (productIsSoldOut(p)) return this.flash('This lot is no longer available');
     if (!(qIn > 0)) return this.setState({ qtyErr: 'Enter a quantity' });
     if (q < p.min) return this.setState({ qtyErr: 'Minimum order is ' + nf(this.conv(p.min, p.unit, u)) + ' ' + u + (u !== p.unit ? ' (' + p.min + ' ' + p.unit + ')' : '') });
-    if (q > p.avail) return this.setState({ qtyErr: 'Only ' + nf(this.conv(p.avail, p.unit, u)) + ' ' + u + ' available' + (u !== p.unit ? ' (' + p.avail + ' ' + p.unit + ')' : '') });
+    if (p.avail > 0 && q > p.avail) return this.setState({ qtyErr: 'Only ' + nf(this.conv(p.avail, p.unit, u)) + ' ' + u + ' available' + (u !== p.unit ? ' (' + p.avail + ' ' + p.unit + ')' : '') });
     const had = s.cart.some((c?: any) => c.pid === p.id);
     void this.task(this.remote.cartPut(p.id, qIn, u, q).then((ok?: any) => { if (!ok) return; this.flash(had ? 'Cart quantity updated' : 'Added to cart'); this.go('cart'); }));
   }
@@ -533,7 +538,7 @@ export class PlatformController {
     if (String(sh.mobile || '').replace(/\D/g, '').length < 9) e.mobile = 'Mobile needs at least 9 digits';
     if (!e.country && !resolveCountryCode(sh.country)) e.country = 'Enter the delivery country as a full country name';
     if (Object.keys(e).length) return this.err('shipErr', e);
-    const bad = s.cart.find((c?: any) => { const p = M.product(c.pid); return !!c.issue || (!!p && (p.avail <= 0 || c.qty > p.avail)); });
+    const bad = s.cart.find((c?: any) => { const p = M.product(c.pid); return !!c.issue || (!!p && (productIsSoldOut(p) || (p.avail > 0 && c.qty > p.avail))); });
     if (bad) return this.flash('A cart item is no longer available in that quantity');
     if (!s.cart || !s.cart.length) { this.flash('Your cart is empty. Add a lot first.'); return this.jump('cats'); }
     this.setState({ shipErr: {} });
@@ -543,8 +548,9 @@ export class PlatformController {
     const SORTS: any[] = [['featured', 'Available first'], ['high', 'Most quantity'], ['low', 'Least quantity'], ['name', 'Name A–Z']];
     const s = this.state, M = X(), u = s.user, go = (x?: any, e?: any) => () => this.go(x, e);
     const q = s.search.trim().toLowerCase();
-    const lotLine = (x?: any) => x.avail > 0 ? x.avail.toLocaleString('en-US') + ' ' + (x.unit === 'bar' && x.avail !== 1 ? 'bars' : x.unit) + ' available' : 'Unavailable';
-    const card = (x?: any) => ({ id: x.id, name: x.name, form: x.form, img: IMG(x.img), qty: lotLine(x), grade: x.lab ? x.grade : 'Test report on request', lab: x.lab || 'No third-party report yet', origin: x.origin, off: x.avail <= 0, opacity: x.avail > 0 ? 1 : .55, hasLabTag: !!x.lab && x.avail > 0, labBg: x.lab ? '#E2F2E9' : '#F1EFE9', labFg: x.lab ? '#17704C' : '#6B6A70', tap: () => this.go('detail', { pid: x.id, qty: String(x.min), qtyErr: '' }) });
+    const lotLine = (x?: any) => lotAvailabilityLabel(x);
+    const cardOff = (x?: any) => productIsSoldOut(x);
+    const card = (x?: any) => ({ id: x.id, name: x.name, form: x.form, img: IMG(x.img), qty: lotLine(x), grade: x.lab ? x.grade : 'Test report on request', lab: x.lab || 'No third-party report yet', origin: x.origin, off: cardOff(x), opacity: cardOff(x) ? .55 : 1, hasLabTag: !!x.lab && !cardOff(x), labBg: x.lab ? '#E2F2E9' : '#F1EFE9', labFg: x.lab ? '#17704C' : '#6B6A70', tap: () => this.go('detail', { pid: x.id, qty: String(x.min), qtyErr: '' }) });
     let lots = M.PRODUCTS.filter((x?: any) => x.mineral === s.mineral);
     const forms = ['All', ...new Set(lots.map((x?: any) => x.form))];
     if (s.fform !== 'All') lots = lots.filter((x?: any) => x.form === s.fform);
@@ -581,8 +587,8 @@ export class PlatformController {
       gridCols: s.cols === 3 ? 'repeat(3,minmax(0,1fr))' : 'repeat(2,minmax(0,1fr))', gridGap: s.cols === 3 ? '8px' : '10px', cardPad: s.cols === 3 ? '8px 9px 10px' : '10px 11px 12px', nameSize: s.cols === 3 ? '12.5px' : '14px', showGridMeta: s.cols !== 3,
       colOpts: [[2, '2 columns', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'], [3, '3 columns', 'M3 4h5v5H3zM9.5 4h5v5h-5zM16 4h5v5h-5zM3 13h5v5H3zM9.5 13h5v5h-5zM16 13h5v5h-5z']].map(([n, label, icon]: any) => ({ label, icon, bg: (s.cols || 2) === n ? '#fff' : 'transparent', fg: (s.cols || 2) === n ? '#121214' : '#8B8A90', tap: () => this.setState({ cols: n }) })),
       lotNum: String(lots.length), lotWord: lots.length === 1 ? 'lot' : 'lots',
-      p: { id: p.id, name: p.name, form: p.form, mineral: M.mineralName(p.mineral), img: IMG(p.img), qty: lotLine(p), unit: p.unit, min: p.min + ' ' + p.unit, origin: p.origin, hasLab: !!p.lab, noLab: !p.lab, grade: p.grade, lab: p.lab, cert: p.cert, off: p.avail <= 0, on: p.avail > 0 },
-      pDocs: p.lab ? [['Test report', p.lab + ' · ' + p.cert + '-TR.pdf'], ['Certificate of analysis', p.cert + '.pdf'], ['Origin declaration', 'Mine of origin · ' + p.origin.split(' · ')[0]]].map(([n, f]: any, i: any) => { const t = ['lotReport', 'lotCoa', 'lotOrigin'][i] as string; return { n, f, tap: () => this.openProductDoc(p, PRODUCT_DOC[t] as ProductDocumentType, t, false), dl: () => this.openProductDoc(p, PRODUCT_DOC[t] as ProductDocumentType, t, true) }; }) : [],
+      p: { id: p.id, name: p.name, form: p.form, mineral: M.mineralName(p.mineral), img: IMG(p.img), qty: lotLine(p), unit: p.unit, min: p.min + ' ' + p.unit, origin: p.origin, hasLab: !!p.lab, noLab: !p.lab, grade: p.grade, lab: p.lab, cert: p.cert, off: productIsSoldOut(p), on: !productIsSoldOut(p), onRequest: productIsAvailableOnRequest(p) },
+      pDocs: productHasLotDocuments(p) ? [['Test report', p.lab + ' · ' + p.cert + '-TR.pdf'], ['Certificate of analysis', p.cert + '.pdf'], ['Origin declaration', 'Mine of origin · ' + p.origin.split(' · ')[0]]].map(([n, f]: any, i: any) => { const t = ['lotReport', 'lotCoa', 'lotOrigin'][i] as string; return { n, f, tap: () => this.openProductDoc(p, PRODUCT_DOC[t] as ProductDocumentType, t, false), dl: () => this.openProductDoc(p, PRODUCT_DOC[t] as ProductDocumentType, t, true) }; }) : [],
       qty: s.qty, setQty: (e?: any) => this.setState({ qty: e.target.value.replace(/[^\d.]/g, ''), qtyErr: '' }), qtyErr: s.qtyErr, inCartNote: inCart ? 'In your cart: ' + (inCart.uIn ? inCart.qIn + ' ' + inCart.uIn : inCart.qty + ' ' + p.unit) : '',
       ...(() => { const pu = p.unit, u = this.unitOf(p), can = !!UF[pu], nf = (v?: any) => (+v.toFixed(6)).toLocaleString('en-US', { maximumFractionDigits: 6 }), q = parseFloat(s.qty);
         return { unitPick: can, noUnitPick: !can,
@@ -630,7 +636,7 @@ export class PlatformController {
   }
   sendChat(o: any, text: string): any { void this.task(this.remote.sendChat(o, text)); }
   openProductDoc(p: any, type: ProductDocumentType, t: string, download = false): any {
-    void this.task(this.remote.openProductDocument(p.id, type).then((ok?: any) => { if (ok === false) { if (download) this.downloadDoc({ t, pid: p.id }); else this.openDoc({ t, pid: p.id }); } }));
+    void this.task(this.remote.openProductDocument(p.id, type, download).then((ok?: any) => { if (ok === false) { if (download) this.downloadDoc({ t, pid: p.id }); else this.openDoc({ t, pid: p.id }); } }));
   }
   orderVals(o?: any, ov?: any): any {
     const s = this.state, M = X(), u = s.user || EMPTY_USER;
@@ -710,7 +716,7 @@ export class PlatformController {
       payAmount: amount, payRef: o.id, isBtc: pm === 'Bitcoin', btcAmt, btcLock: this.left(btcLeft).slice(3), btcExpired: !!btc && btcLeft <= 0, btcTx: s.btcTx || '', setBtcTx: (e?: any) => this.setState({ btcTx: e.target.value.trim(), payErr: '' }),
       hasBtcQuote: !!btc, getBtcQuote: () => { void this.task(this.remote.btcQuote(true)); },
       copyBtc: () => { if (!btc) return this.flash('Get a Bitcoin quote first'); if (navigator.clipboard) navigator.clipboard.writeText(btc.address).then(() => this.flash('Address copied'), () => this.flash('Copy failed. Select the address and copy it.')); else this.flash('Copy is not available in this browser'); },
-      needsRef: pm === 'UPI' || pm === 'Net banking', payRefVal: s.payRef || '', setPayRef: (e?: any) => this.setState({ payRef: e.target.value, payErr: '' }), payRefLabel: pm === 'UPI' ? 'UPI TRANSACTION REFERENCE' : 'BANK PAYMENT REFERENCE',
+      needsRef: paymentNeedsReference(pm), payRefVal: s.payRef || '', setPayRef: (e?: any) => this.setState({ payRef: e.target.value, payErr: '' }), payRefLabel: pm === 'UPI' ? 'UPI TRANSACTION REFERENCE' : 'PAYMENT REFERENCE',
       quickPays: [['UPI', 'UPI', 'Google Pay, PhonePe, Paytm or any UPI app', 'M7 3h10v18H7zM11 18h2'], ['Net banking', 'Net banking', 'Pay from your bank account online', 'M3 21h18M5 21V10M19 21V10M9 21v-7M15 21v-7M2 10l10-7 10 7z'], ['Bank transfer', 'Bank transfer', 'NEFT, RTGS or SWIFT · upload the receipt', 'M4 7h16v12H4zM4 11h16M8 15h3'], ['Bitcoin', 'Bitcoin', 'On-chain BTC · rate locked for 15 minutes', 'M9 4v16M13 4v3M13 17v3M7 7h7a3 3 0 0 1 0 6H7M7 13h8a3 3 0 0 1 0 6H7']].map(([id, label, sub, icon]: any) => { const on = pm === id; return { label, sub, icon, border: on ? '#121214' : '#E4E2DB', sh: on ? '0 6px 18px rgba(18,18,20,.10)' : 'none', radio: on ? '7px solid #121214' : '1.5px solid #C8C6BF', iconBg: on ? '#121214' : '#F1EFE9', iconFg: on ? '#D9B456' : '#121214', tap: () => { this.setState({ pmethod: id, payErr: '', payRef: '' }); if (id === 'Bitcoin') void this.task(this.remote.btcQuote()); } }; }),
       isBankPay: pm !== 'Bitcoin' && pm !== 'UPI' && pm !== 'Net banking', paying: !!s.paying, payingText: 'Submitting your payment details…',
       payHead: pm === 'Bitcoin' ? 'SEND BITCOIN TO' : pm === 'Bank transfer' ? 'TRANSFER TO' : pm === 'Net banking' ? 'PAY FROM YOUR ONLINE BANKING TO' : 'UPI DETAILS',
@@ -763,7 +769,8 @@ export class PlatformController {
       hasDraft: s.hasDraft && !!d.mineral, draftLine: M.mineralName(d.mineral || 'gold') + ' · ' + d.photos + (d.photos === 1 ? ' photo' : ' photos') + (d.qty ? ' · ' + d.qty + ' ' + d.unit : ''),
       resumeDraft: () => this.go('sellForm'), discardDraft: () => this.setState({ sheet: 'discardDraft' }),
       dMineral: M.mineralName(d.mineral || 'gold'), dCat: (M.catOf(d.mineral || 'gold') || ({} as AnyObj)).name,
-      dPhotos: Array.from({ length: Math.max(3, s.uploads.sellPhotos.length) }, (_?: any, i?: any) => { const up = s.uploads.sellPhotos[i]; return { has: !!up, empty: !up, img: up && up.uri ? "url('" + up.uri + "')" : IMG('cat-precious') }; }),
+      // BUG-011: empty slots stay blank (no catalogue placeholder); only real upload URIs preview.
+      dPhotos: Array.from({ length: Math.max(3, s.uploads.sellPhotos.length) }, (_?: any, i?: any) => { const up = s.uploads.sellPhotos[i]; return { has: !!up, empty: !up, img: up && up.uri ? "url('" + up.uri + "')" : 'none' }; }),
       dPhotoCount: d.photos + ' of 3 minimum', addPhoto: () => { this.remote.pickFiles('sellPhotos', 'sell_photo', { limit: 10, max: 10 }); this.setState({ draftErr: {} }); }, removePhoto: () => this.remote.removeUpload('sellPhotos', s.uploads.sellPhotos.length - 1),
             dPhotoErr: de.photos || '', dPhotoBorder: de.photos ? '#B42318' : '#D5D3CC',
       dQty: d.qty, setDQty: (e?: any) => setD({ qty: e.target.value.replace(/[^\d.]/g, '') }), dQtyErr: de.qty || '', dQtyBorder: de.qty ? '#B42318' : '#E4E2DB',
@@ -899,7 +906,7 @@ export class PlatformController {
     void this.task(compressImage(file, 1600, 0.82).then((body?: any) => this.remote.uploadKycDoc(id, body, { kind: 'img', src: URL.createObjectURL(body), name: file.name || id + '.jpg', size: fmtBytes(body.size), at: Date.now() })));
   }
   nextKycDoc(): any {
-    const s = this.state, k = s.kyc, ids = ['front', 'back', 'selfie', 'address', 'biz'].filter((id?: any) => (id !== 'back' || k.idType !== 'Passport') && (id !== 'biz' || this.bizDocNeeded()));
+    const s = this.state, k = s.kyc, ids = kycRequiredDocIds(s.kycReq, k.idType, this.bizDocNeeded());
     const nxt = ids.find((id?: any) => !k[id] && id !== s.kycDocId);
     if (nxt) { this.setState({ kycDocId: nxt, kycDocErr: '' }); this.top(); } else this.back();
   }
@@ -922,7 +929,12 @@ export class PlatformController {
     if (a.result === 'won') return { cta: this.aucUnpaid(a) ? 'Pay now · ' + M.money(this.aucCur(a)) : 'Track order ' + (a.orderId || '') };
     return { cta: 'Browse similar lots' };
   }
-  openAuction(id?: any): any { const a = this.aucOf(id); this.go('auction', { aid: id, bidAmt: a ? String(this.aucMin(a)) : '', bidErr: '', autoOn: false, autoMax: '' }); }
+  openAuction(id?: any): any {
+    const a = this.aucOf(id);
+    // BUG-017: restore server auto-bid ceiling instead of always clearing the toggle.
+    const max = a && a.autoMax > 0 ? String(a.autoMax) : '';
+    this.go('auction', { aid: id, bidAmt: a ? String(this.aucMin(a)) : '', bidErr: '', autoOn: !!max, autoMax: max });
+  }
   auctionPrimary(): any {
     const s = this.state, a = this.aucOf(), M = X(); if (!a) return;
     if (a.status === 'upcoming') { if (!this.gate('auction')) return; void this.task(this.remote.toggleReminder(a, !s.reminders[a.id])); return; }
@@ -1000,8 +1012,17 @@ export class PlatformController {
       bidUp: () => this.setState({ bidAmt: String(amt() + inc), bidErr: '' }), bidDown: () => a && this.setState({ bidAmt: String(Math.max(this.aucMin(a), amt() - inc)), bidErr: '' }),
       bidQuick: [1, 2, 5].map((k?: any) => ({ label: '+' + M.money(inc * k), tap: () => a && this.setState({ bidAmt: String(this.aucCur(a) + inc * k), bidErr: '' }) })),
       bidAgain: () => a && this.setState((x?: any) => { const min = this.aucMin(a), mx = parseFloat(x.autoMax) || 0; return { bidAmt: String(min), bidErr: '', autoMax: x.autoOn && mx < min ? String(min + 10 * inc) : x.autoMax }; }),
-      autoOn: s.autoOn, autoBg: s.autoOn ? '#121214' : '#D5D3CC', autoX: s.autoOn ? '20px' : '2px', toggleAuto: () => this.setState({ autoOn: !s.autoOn, autoMax: s.autoMax || String(amt() + 10 * inc) }),
+      autoOn: s.autoOn, autoBg: s.autoOn ? '#121214' : '#D5D3CC', autoX: s.autoOn ? '20px' : '2px',
+      // BUG-017: register / clear auto-bid with the server when the toggle changes.
+      toggleAuto: () => {
+        if (!a) return;
+        const next = !s.autoOn;
+        const maxStr = s.autoMax || String(amt() + 10 * inc);
+        this.setState({ autoOn: next, autoMax: maxStr });
+        void this.task(this.remote.syncAutoBid(a, next, Math.round(parseFloat(maxStr) || 0)));
+      },
       autoMax: s.autoMax, setAutoMax: (e?: any) => this.setState({ autoMax: e.target.value.replace(/[^\d]/g, ''), bidErr: '' }),
+      commitAutoMax: () => { if (!a || !s.autoOn) return; const max = Math.round(parseFloat(String(s.autoMax)) || 0); if (max > 0) void this.task(this.remote.syncAutoBid(a, true, max)); },
       simOutbid: () => this.simOutbid(), simEnd: () => a && this.endAuction(a.id),
       browseSimilar: () => this.jump('lots', { mineral: p.mineral || 'gold', fform: 'All', labOnly: false, search: '' }),
       wonLine: won ? (nameOf(won) + ' · ' + qtyOf(won) + ' · auction ' + won.id) : '', wonPrice: won ? M.money(this.aucCur(won)) : ''
@@ -1216,11 +1237,11 @@ export class PlatformController {
   bizDocNeeded(): any { return this.isBusiness(this.state.user || ({} as AnyObj)); }
   kycFlag(id?: any): any { const u = this.state.user || ({} as AnyObj), fl = (u.kycFlags || ({} as AnyObj))[id], f = this.state.kyc[id]; if (!fl) return ''; return f && f.at > fl[1] ? '' : fl[0]; }
   kycListVals(): any {
-    const s = this.state, u = s.user || ({} as AnyObj), k = s.kyc, ids = ['front', 'back', 'selfie', 'address', 'biz'].filter((id?: any) => id !== 'back' || k.idType !== 'Passport').filter((id?: any) => id !== 'biz' || this.bizDocNeeded());
+    const s = this.state, u = s.user || ({} as AnyObj), k = s.kyc, ids = kycRequiredDocIds(s.kycReq, k.idType, this.bizDocNeeded());
     const editable = u.kyc === 'rejected' || u.kyc === 'none';
     const base = u.kyc === 'verified' ? 'Verified' : u.kyc === 'pending' ? 'Received' : '';
     return ids.map((id?: any) => { const f = k[id], fl = this.kycFlag(id), done = (u.kycFlags || ({} as AnyObj))[id] && !fl;
-      const n = id === 'front' ? (k.idType === 'Passport' ? 'Passport photo page' : k.idType + ' · front') : id === 'back' ? k.idType + ' · back' : KYC_INFO[id].title;
+      const n = id === 'front' || id === 'back' ? kycDocLabel(id, k.idType) : KYC_INFO[id].title;
       return { n, v: fl ? 'Re-upload requested' : done ? 'Replaced · ready to resubmit' : f ? (base || 'Uploaded') + ' · ' + f.name : base || 'Not uploaded', fg: fl ? '#B42318' : done ? '#17704C' : base === 'Verified' ? '#17704C' : (f || base) ? '#121214' : '#8B8A90', flag: fl,
         canEdit: editable || !!fl, btn: fl ? 'Re-upload' : f ? 'Replace' : 'Upload', btnBg: fl ? '#121214' : '#fff', btnFg: fl ? '#F4F2ED' : '#121214', btnBorder: fl ? '#121214' : '#E4E2DB',
         tap: () => this.go('kycDoc', { kycDocId: id, kycDocErr: '' }) }; });
@@ -1231,7 +1252,7 @@ export class PlatformController {
     const r = s.reg, setR = (p?: any) => this.setState((x?: any) => ({ reg: Object.assign({}, x.reg, p), regErr: '' }));
     const k = s.kyc, setK = (p?: any) => this.setState((x?: any) => ({ kyc: Object.assign({}, x.kyc, p), kycErr: '' }));
     const boxes = Array.from({ length: 4 }, (_?: any, i?: any) => ({ v: s.otp[i] || '', border: s.otp.length === i ? '#121214' : '#E4E2DB' }));
-    const idDocs = [['front', k.idType === 'Passport' ? 'Passport photo page' : k.idType + ' · front', true], ['back', k.idType + ' · back', k.idType !== 'Passport'], ['selfie', 'Selfie holding your ID', true], ['address', 'Proof of address (utility bill, bank statement or lease)', true], ['biz', 'Business document (registration, licence or permit)', this.bizDocNeeded()]].filter((d?: any) => d[2]);
+    const idDocs = kycDocRows(s.kycReq, k.idType, this.bizDocNeeded());
     return {
       startSignup: () => { set({ mode: 'signup' }); this.go('auth'); }, startSignin: () => { set({ mode: 'signin' }); this.go('auth'); },
       browseGuest: () => this.jump('cats'),
@@ -1252,7 +1273,11 @@ export class PlatformController {
       authLabel: a.method === 'email' ? 'EMAIL ADDRESS' : 'WHATSAPP NUMBER',
       authPh: a.method === 'email' ? 'you@company.com' : '803 000 0000', authType: a.method === 'email' ? 'email' : 'tel',
       keepOn: a.keep, keepBg: a.keep ? '#121214' : '#D5D3CC', keepX: a.keep ? '20px' : '2px', toggleKeep: () => set({ keep: !a.keep }),
-      otpVia: a.method === 'email' ? 'email' : 'WhatsApp', otpTo: s.maskedDest ? s.maskedDest : a.method === 'email' ? (a.value || 'your email') : (a.cc || '+234') + ' ' + (a.value.trim().replace(/^0+/, '') || 'your number'),
+      otpVia: a.method === 'email' ? 'email' : 'WhatsApp',
+      otpTo:
+        a.method === 'email'
+          ? otpEmailForDisplay(a.value, s.maskedDest)
+          : (s.maskedDest || ((a.cc || '+234') + ' ' + (a.value.trim().replace(/^0+/, '') || 'your number'))),
       otp: s.otp, setOtp: (e?: any) => this.setState({ otp: e.target.value.replace(/\D/g, '').slice(0, 4), otpErr: '' }), otpBoxes: boxes, otpErr: s.otpErr,
       resendOtp: () => { void this.task(this.remote.resendOtp()); },
       roleOpts: [['buyer', 'Buyer', 'Buy verified minerals'], ['seller', 'Seller', 'Sell minerals to Mineral Bridge'], ['both', 'Both', 'Buy and sell from one account']].map(([id, name, sub]: any) => Object.assign({ name, sub, tap: () => setR({ role: id }) }, sel(r.role === id))),

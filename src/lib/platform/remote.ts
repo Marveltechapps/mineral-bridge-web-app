@@ -27,9 +27,9 @@ import { connectAuctionWs, connectNotificationStream } from '../../services/real
 import type { AuctionWsHandle, RealtimeHandle } from '../../services/realtime';
 import * as MB from './data';
 import {
-  applyMyBid, gramsPer, ID_TYPE_LABELS, ID_TYPE_WIRE, KYC_DOC_TO_KIND, KYC_KIND_TO_DOC, mapAuctionDetail, mapAuctionSummary, mapCategory,
+  applyMyBid, gramsPer, ID_TYPE_LABELS, ID_TYPE_WIRE, isOutgoingChatAuthor, KYC_DOC_TO_KIND, KYC_KIND_TO_DOC, mapAuctionDetail, mapAuctionSummary, mapCategory,
   mapDocumentRows, mapKycToUser, mapMeToUser, mapNotification, mapOrderDetail, mapProduct, mapRefund, mapShipment, moneyMajor,
-  pendingVariation, quotationNumber, resolveCountryCode, stageIndexOf, ts,
+  paymentWireSendsReference, pendingVariation, quotationNumber, quotationNumberToSubmit, resolveCountryCode, stageIndexOf, ts,
 } from '../mappers';
 import type { Auction, ChatMsg, KycDocId, KycFile, Notif, Order, OrderItem, Refund } from '../../types/mineralBridge';
 import { compressImage } from '../images';
@@ -438,7 +438,7 @@ export class Remote {
   private mapSupportMsgs(items: SupportMessage[]): SupportMsg[] {
     return (items || []).map((m, i) => {
       const a = m.author, kind = typeof a === 'string' ? a : a && typeof a === 'object' ? String((a as { kind?: string }).kind ?? '') : '';
-      const me = kind === 'user' || kind === 'customer', system = kind === 'system';
+      const me = isOutgoingChatAuthor(a, this.st.user?.id), system = kind === 'system';
       const name = typeof m.authorName === 'string' && m.authorName ? m.authorName : 'Mineral Bridge';
       return { id: String(m.id ?? m._id ?? 'm' + i), me, system, who: me ? 'You' : system ? 'Mineral Bridge' : name, text: m.body, at: ts(m.at) };
     }).sort((p, q) => p.at - q.at);
@@ -505,7 +505,12 @@ export class Remote {
   async loadKyc() {
     if (!this.st.user) return;
     try {
-      const k = await kycSvc.getKyc();
+      let k = await kycSvc.getKyc();
+      // BUG-001: UI defaults to National ID; sync the draft so requiredKinds includes id_back.
+      if (!k.idType) {
+        const wire = ID_TYPE_WIRE[this.st.kyc.idType] || 'national_id';
+        k = await kycSvc.patchKyc({ idType: wire });
+      }
       const prev = this.st.kyc, kyc = { ...prev, idType: this.idTypeLabel(k.idType), consent: k.consent } as AppState['kyc'];
       (Object.keys(KYC_DOC_TO_KIND) as KycDocId[]).forEach(id => { kyc[id] = false; });
       const lazy: [KycDocId, string][] = [];
@@ -622,19 +627,35 @@ export class Remote {
    * Resolves true when opened, false when the lot has no such document (so the caller can fall back), and
    * undefined when the request failed (the error was already shown).
    */
-  async openProductDocument(pid: string, type: ProductDocumentType): Promise<boolean | undefined> {
+  async openProductDocument(pid: string, type: ProductDocumentType, download = false): Promise<boolean | undefined> {
     // Open the tab synchronously (inside the click) so the browser's popup blocker allows it; point it at the signed URL later.
-    const win = typeof window !== 'undefined' ? window.open('', '_blank') : null;
+    const win = !download && typeof window !== 'undefined' ? window.open('', '_blank') : null;
     if (win) { try { win.opener = null; } catch { /* ignore */ } }
     const res = await this.run('proddoc:' + pid + ':' + type, async () => {
       try {
         const d = await catalogueSvc.getProductDocument(pid, type);
         if (!d || !/^https?:\/\//i.test(d.url || '')) return false;
+        if (download) {
+          const res = await fetch(d.url);
+          if (!res.ok) throw new Error('download failed');
+          const blob = await res.blob();
+          const file = d.name || `${type}.pdf`;
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = file;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          setTimeout(() => URL.revokeObjectURL(url), 3000);
+          this.s.flash('Downloaded ' + file);
+          return true;
+        }
         if (win) win.location.href = d.url; else window.open(d.url, '_blank', 'noopener');
         return true;
       } catch (e) {
         if (isApiError(e) && (e.status === 404 || e.code === 'document/not-available')) return false;
-        if (e instanceof Error && !isApiError(e)) { this.s.flash('Could not open this document in the browser'); return undefined; }
+        if (e instanceof Error && !isApiError(e)) { this.s.flash(download ? 'Could not download this document' : 'Could not open this document in the browser'); return undefined; }
         throw e;
       }
     });
@@ -750,7 +771,7 @@ export class Remote {
             id: c.reference, kind: c.kind, idx: stageIndexOf(c.kind, c.step, c.status), created: at, items: sell ? [] : [{ pid: c.reference, qty: 0, name: c.title }],
             log: [{ who: MB.WHO.mb, text: c.title, note: '', at }],
           };
-          if (sell) o.sell = { mineral: '', name: c.title, qty: 0, unit: '', grade: '', form: '', details: '', photos: 0, docs: [], ref: 0 };
+          if (sell) o.sell = { mineral: '', name: c.title, qty: c.sell?.qty ?? 0, unit: c.sell?.unit || 'kg', grade: c.sell?.grade || '', form: '', details: '', photos: 0, docs: [], ref: 0 };
           if (c.status === 'cancelled') o.cancelled = { reason: 'Cancelled', note: '', at };
           if (c.status === 'rejected') o.rejected = 'Rejected';
           return o;
@@ -861,6 +882,12 @@ export class Remote {
 
   /* quotation */
   private async withQuoteNo<T>(o: Order, fn: (no: string) => Promise<T>): Promise<T> {
+    const known = quotationNumberToSubmit(o.quote?.no, '');
+    if (known) {
+      try { return await fn(known); } catch (e) {
+        if (!(isApiError(e) && e.status === 409 && e.code === 'quotation/not-current')) throw e;
+      }
+    }
     const start = this.st.om[o.id]?.qTry ?? 0;
     let last: unknown;
     for (let i = start; i < start + 6; i++) {
@@ -930,7 +957,7 @@ export class Remote {
       const body = {
         method: wire, version: ver,
         ...(wire === 'btc' ? { btcTxid: (x.btcTx || '').trim() } : {}),
-        ...(wire === 'upi' || wire === 'net_banking' ? { reference: (x.payRef || '').trim() } : {}),
+        ...(paymentWireSendsReference(wire) ? { reference: (x.payRef || '').trim() } : {}),
         ...(x.uploads.proof.length ? { proofFileIds: x.uploads.proof.map(p => p.fileId) } : {}),
       };
       try { const r = await ordersSvc.submitPayment(c.id, body, key); this.idemClear('pay:' + c.id); return r; } catch (e) { if (!isNetworkError(e)) this.idemClear('pay:' + c.id); throw e; }
@@ -1045,11 +1072,10 @@ export class Remote {
   }
 
   /* chat */
+  /** BUG-016: author may be the string `'user'`/`'agent'`, or `{ kind, id, sender_role }`. */
   private mapMsgs(items: { body: string; author: unknown; at: string }[]): ChatMsg[] {
-    return items.map(m => {
-      const a = (m.author && typeof m.author === 'object' ? m.author : {}) as { kind?: string };
-      return { me: a.kind === 'customer' || a.kind === 'user', text: m.body, at: ts(m.at) };
-    }).sort((p, q) => p.at - q.at);
+    const myId = this.st.user?.id;
+    return items.map(m => ({ me: isOutgoingChatAuthor(m.author, myId), text: m.body, at: ts(m.at) })).sort((p, q) => p.at - q.at);
   }
 
   async loadChat(ref: string) {
@@ -1063,6 +1089,15 @@ export class Remote {
   }
 
   pollChat() { if (Date.now() - this.lastChatPoll > 8000) this.bg(this.loadChat(this.st.oid)); }
+
+  private lastOrderPoll = 0;
+  /** Refresh sell requests and the open order without a manual reload (BUG-015). */
+  pollOrders() {
+    if (!this.st.user || Date.now() - this.lastOrderPoll < 8000) return;
+    this.lastOrderPoll = Date.now();
+    this.bg(this.loadOrders());
+    if (this.st.screen === 'order' && this.st.oid) this.bg(this.loadOrder(this.st.oid, true));
+  }
 
   async sendChat(o: Order, text: string) {
     const msg: ChatMsg = { me: true, text, at: Date.now() };
@@ -1130,11 +1165,17 @@ export class Remote {
       const added: UploadRef[] = [];
       for (const f of files) {
         if (f.size > 10 * 1048576) { this.s.flash('A file is larger than 10 MB and was skipped'); continue; }
-        const isImg = /^image\//.test(f.type);
-        if (!isImg && f.type !== 'application/pdf') { this.s.flash('Only images and PDF files can be uploaded'); continue; }
-        const body = isImg ? await compressImage(f, 1800, 0.82) : f;
+        // BUG-011: some pickers leave type empty; infer image from purpose/extension.
+        const looksImg =
+          /^image\//.test(f.type) ||
+          (!f.type && /\.(jpe?g|png|webp|heic|heif|gif)$/i.test(f.name || '')) ||
+          ((purpose === 'sell_photo' || purpose === 'delivery_photo') && f.type !== 'application/pdf');
+        if (!looksImg && f.type !== 'application/pdf') { this.s.flash('Only images and PDF files can be uploaded'); continue; }
+        const body = looksImg ? await compressImage(f, 1800, 0.82) : f;
         const up = await filesSvc.uploadFile(body, purpose, { fileName: f.name });
-        added.push({ fileId: up.fileId, name: f.name || up.name, uri: isImg ? URL.createObjectURL(body) : '', type: body.type || up.contentType, label });
+        // Always keep a blob preview URL for images so the sell-form thumbnails update immediately.
+        const previewUri = looksImg ? URL.createObjectURL(body) : '';
+        added.push({ fileId: up.fileId, name: f.name || up.name, uri: previewUri, type: body.type || up.contentType || (looksImg ? 'image/jpeg' : f.type), label });
       }
       if (added.length) this.s.setState(x => ({ uploads: { ...x.uploads, [bucket]: [...x.uploads[bucket], ...added] } }));
       this.syncCounters();
@@ -1298,6 +1339,25 @@ export class Remote {
         return;
       }
       default: return undefined;
+    }
+  }
+
+  /** BUG-017: register or clear the server-side auto-bid ceiling without requiring a manual bid. */
+  async syncAutoBid(a: Auction, on: boolean, maxMajor: number) {
+    const ref = a.sid || a.id;
+    try {
+      if (on && maxMajor > 0) {
+        await auctionsSvc.setAutoBid(ref, Math.round(maxMajor * 100));
+        this.s.patchAuc(a.id, c => { c.autoMax = maxMajor; return c; });
+        this.s.flash('Auto-bid on · up to ' + maxMajor);
+      } else {
+        await auctionsSvc.clearAutoBid(ref);
+        this.s.patchAuc(a.id, c => { c.autoMax = 0; return c; });
+        this.s.flash('Auto-bid off');
+      }
+    } catch (e) {
+      this.s.setState({ autoOn: !on });
+      this.fail(e);
     }
   }
 

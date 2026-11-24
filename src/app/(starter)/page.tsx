@@ -1,5 +1,6 @@
-import Link from 'next/link';
+import { redirect } from 'next/navigation';
 
+/** BUG-007: `/` must open the real Mineral Bridge app, not the starter scaffold. */
 export default function HomePage() {
-  return <main><h1>Mineral Bridge</h1><p>Project structure example.</p><Link href="/samples">View sample items</Link></main>;
+  redirect('/app');
 }

@@ -284,6 +284,9 @@ export interface ProductCard {
   pricePerGram: Money;
   createdAt: string;
   soldOut: boolean;
+  availableOnRequest?: boolean;
+  inventoryTracked?: boolean;
+  lab?: { name: string | null; certificateNo: string | null } | null;
 }
 
 export interface ProductMedia {
@@ -393,6 +396,8 @@ export interface OrderCard {
   step: string | null;
   actionNeeded: boolean;
   updatedAt: string;
+  /** Present on sell cards so the dashboard can show quantity before the detail loads. */
+  sell?: { qty: number; unit: string; grade?: string };
 }
 
 export interface ListOrdersQuery {
@@ -751,6 +756,8 @@ export interface AuctionDetail {
     yourBid: Money | null;
     youAreHighest: boolean;
   };
+  /** Present when status is ended — authoritative win/loss (BUG-018). */
+  outcome?: { result: string; winnerId: string | null; youWon: boolean } | null;
   closesAt: string;
   antiSniping: { enabled: boolean; extendByMinutes: number; withinMinutes: number };
   bindingNote: string;

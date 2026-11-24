@@ -27,6 +27,10 @@ export interface Product {
   origin: string;
   img: string;
   ref: number;
+  soldOut?: boolean;
+  availableOnRequest?: boolean;
+  hasDocs?: boolean;
+  verified?: boolean;
 }
 
 export interface Stage {
@@ -180,6 +184,7 @@ export interface Order {
 }
 
 export interface User {
+  id?: string;
   name: string;
   business: string;
   country: string;

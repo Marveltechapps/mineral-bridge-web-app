@@ -137,7 +137,7 @@ export function AuctionScreen({ vm }: { vm: ViewModel }) {
                 <span style={{ position: 'absolute', left: '14px', top: '50%', transform: 'translateY(-50%)', fontSize: '12px', color: '#8B8A90' }}>
                   Max $
                 </span>
-                <input className="authIn" aria-label="Auto-bid limit" inputMode="numeric" value={vm.autoMax ?? ''} onChange={vm.setAutoMax} style={{ width: '100%', height: '46px', borderRadius: '12px', border: '1px solid #E4E2DB', padding: '0 14px 0 52px', fontFamily: "'Geist Mono', monospace", fontSize: '15px', fontWeight: '600' }} />
+                <input className="authIn" aria-label="Auto-bid limit" inputMode="numeric" value={vm.autoMax ?? ''} onChange={vm.setAutoMax} onBlur={vm.commitAutoMax} style={{ width: '100%', height: '46px', borderRadius: '12px', border: '1px solid #E4E2DB', padding: '0 14px 0 52px', fontFamily: "'Geist Mono', monospace", fontSize: '15px', fontWeight: '600' }} />
               </div>
             ) : null}
           </div>

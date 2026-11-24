@@ -11,7 +11,6 @@ export * as notificationsService from './notifications.service';
 export * as supportService from './support.service';
 export * as documentsService from './documents.service';
 export * as referenceService from './reference.service';
-export * as sampleService from './sampleService';
 export * as realtime from './realtime';
 
 // Flat re-exports for the most common names. Name clashes (e.g. `register`, `getFaqs`) stay namespaced above.

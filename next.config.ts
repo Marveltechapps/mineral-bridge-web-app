@@ -11,6 +11,14 @@ const nextConfig: NextConfig = {
     // Marks this checkout as the security-agent upgrade path (Next.js 16.4.6).
     agentUpgrade: 'security',
   },
+  async redirects() {
+    // BUG-007: never expose the starter scaffold; platform lives at /app.
+    return [
+      { source: '/', destination: '/app', permanent: false },
+      { source: '/samples', destination: '/app', permanent: false },
+      { source: '/samples/:path*', destination: '/app', permanent: false },
+    ];
+  },
   async rewrites() {
     return proxyTarget ? [{ source: '/v2/:path*', destination: `${proxyTarget}/v2/:path*` }] : [];
   },
