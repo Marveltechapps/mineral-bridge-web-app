@@ -30,7 +30,7 @@ const baseCard = (over: Partial<ProductCard>): ProductCard => ({
     minOrder: { value: 10, unit: 'g', grams: 10 },
     step: { value: 1, unit: 'g', grams: 1 },
   },
-  pricePerGram: { amountMinor: 100, currency: 'USD' },
+  pricePerGram: { amount: 100, currency: 'USD' },
   createdAt: '2026-01-01T00:00:00.000Z',
   soldOut: false,
   availableOnRequest: true,

@@ -30,7 +30,7 @@ const detail = (over: Partial<ProductDetail>): ProductDetail => ({
     minOrder: { value: 1, unit: 't', grams: 1_000_000 },
     step: { value: 1, unit: 'g', grams: 1 },
   },
-  pricePerGram: { amountMinor: 50, currency: 'USD' },
+  pricePerGram: { amount: 50, currency: 'USD' },
   createdAt: '2026-01-01T00:00:00.000Z',
   soldOut: false,
   availableOnRequest: true,
