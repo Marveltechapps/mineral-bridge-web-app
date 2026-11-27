@@ -72,7 +72,7 @@ test.describe('authenticated customer workflows @bugfix @web', () => {
   });
 
   test('BUG-009: the buyer can accept the revised quotation number', async () => {
-    await page.locator('nav').getByRole('button', { name: 'Orders' }).click();
+    await page.locator('header').getByRole('button', { name: 'Orders' }).click();
     await page.getByText('Revised gold lot').first().click();
     await page.getByRole('button', { name: 'Review quotation' }).click();
     await expect(page.getByText(/Q-ISO-R2/)).toBeVisible();
@@ -81,7 +81,7 @@ test.describe('authenticated customer workflows @bugfix @web', () => {
   });
 
   test('BUG-008: bank transfer shows a payment reference field', async () => {
-    await page.locator('nav').getByRole('button', { name: 'Home' }).click();
+    await page.getByRole('button', { name: 'Mineral Bridge home' }).click();
     await page.getByRole('button', { name: /MB-ISO-PAY/ }).click();
     await page.getByRole('button', { name: 'Make payment' }).click();
     await page.getByText('Bank transfer', { exact: false }).first().click();
@@ -91,7 +91,7 @@ test.describe('authenticated customer workflows @bugfix @web', () => {
   });
 
   test('BUG-012/013: a stored 1000-gram kilogram is shown as 1 kg', async () => {
-    await page.locator('nav').getByRole('button', { name: 'Orders' }).click();
+    await page.locator('header').getByRole('button', { name: 'Orders' }).click();
     await page.getByRole('tab', { name: /Selling/ }).click();
     await expect(page.getByText('MB-ISO-SELL')).toBeVisible();
     await expect(page.getByText(/1 kg/)).toBeVisible();
@@ -108,7 +108,7 @@ test.describe('authenticated customer workflows @bugfix @web', () => {
   });
 
   test('selling: a 1 kg request keeps its unit and shows the uploaded photo', async () => {
-    await page.locator('nav').getByRole('button', { name: 'Sell' }).click();
+    await page.locator('header').getByRole('button', { name: 'Sell' }).click();
     await page.getByText('Gold', { exact: true }).first().click();
     await page.getByLabel('Quantity').fill('1');
     await page.getByRole('radio', { name: 'kg' }).click();

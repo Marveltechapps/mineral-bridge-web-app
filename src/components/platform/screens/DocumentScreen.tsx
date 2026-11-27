@@ -1,32 +1,32 @@
-// Generated from the Claude Design page "Mineral Bridge Web v5" — keep markup and styles in sync with the design.
+// Generated from the Claude Design page "Mineral Bridge Web v6" — keep markup and styles in sync with the design.
 import type { ViewModel } from '../../../types/platform';
 import { list, str } from '../../../lib/platform/view';
 
 export function DocumentScreen({ vm }: { vm: ViewModel }) {
   return (
     <div style={{ padding: '0', animation: 'fadeUp .45s cubic-bezier(.2,.8,.2,1) both' }}>
-      <div style={{ borderRadius: '6px', background: '#fff', boxShadow: '0 1px 2px rgba(18,18,20,.06), 0 12px 32px rgba(18,18,20,.10)', border: '1px solid #E4E2DB', overflow: 'hidden' }}>
-        <div style={{ padding: '16px 18px 14px', background: '#121214', color: '#F4F2ED', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
+      <div style={{ borderRadius: '6px', background: '#fff', boxShadow: '0 1px 2px rgba(15,23,42,.06), 0 12px 32px rgba(15,23,42,.10)', border: '1px solid #E2E8F0', overflow: 'hidden' }}>
+        <div style={{ padding: '16px 18px 14px', background: '#1F2A44', color: '#F8FAFC', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
           <div>
-            <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '19px', lineHeight: '1' }}>
+            <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '800', letterSpacing: '-.5px', fontSize: '15.6px', lineHeight: '1' }}>
               Mineral Bridge
             </div>
-            <div style={{ fontFamily: "'Geist Mono', monospace", fontSize: '8.5px', letterSpacing: '.8px', color: '#D9B456', marginTop: '4px' }}>
+            <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '700', fontVariantNumeric: 'tabular-nums', fontSize: '8.5px', letterSpacing: '.8px', color: '#F2C94C', marginTop: '4px' }}>
               VERIFIED MINERAL TRADING
             </div>
           </div>
           <div style={{ textAlign: 'right' }}>
-            <div style={{ fontFamily: "'Geist Mono', monospace", fontSize: '9px', letterSpacing: '.6px', color: '#9C9AA0' }}>
+            <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '700', fontVariantNumeric: 'tabular-nums', fontSize: '9px', letterSpacing: '.6px', color: '#94A3B8' }}>
               {vm.dc?.issuer}
             </div>
-            <div style={{ fontFamily: "'Geist Mono', monospace", fontSize: '10.5px', marginTop: '3px' }}>
+            <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '700', fontVariantNumeric: 'tabular-nums', fontSize: '10.5px', marginTop: '3px' }}>
               {vm.dc?.no}
             </div>
           </div>
         </div>
         <div style={{ padding: '16px 18px 6px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '10px' }}>
-            <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '24px', lineHeight: '1.1' }}>
+            <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '800', letterSpacing: '-.5px', fontSize: '19.7px', lineHeight: '1.1' }}>
               {vm.dc?.title}
             </div>
             {vm.dc?.status ? (
@@ -35,14 +35,14 @@ export function DocumentScreen({ vm }: { vm: ViewModel }) {
               </span>
             ) : null}
           </div>
-          <div style={{ fontSize: '11.5px', color: '#6B6A70', marginTop: '4px' }}>
+          <div style={{ fontSize: '11.5px', color: '#5B6B82', marginTop: '4px' }}>
             {"Issued "}{vm.dc?.date}
           </div>
           {vm.dc?.hasParties ? (
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2,minmax(0,1fr))', gap: '10px', marginTop: '14px', padding: '11px 12px', borderRadius: '10px', background: '#F7F6F2' }}>
               {list(vm.dc?.parties).map((pt, index) => (
                 <div key={index} style={{ minWidth: '0' }}>
-                  <div style={{ fontFamily: "'Geist Mono', monospace", fontSize: '8.5px', letterSpacing: '.6px', color: '#8B8A90' }}>
+                  <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '700', fontVariantNumeric: 'tabular-nums', fontSize: '8.5px', letterSpacing: '.6px', color: '#5B6B82' }}>
                     {pt?.k}
                   </div>
                   <div style={{ fontSize: '12px', fontWeight: '600', marginTop: '3px', lineHeight: '1.35' }}>
@@ -54,12 +54,12 @@ export function DocumentScreen({ vm }: { vm: ViewModel }) {
           ) : null}
           {list(vm.dc?.sections).map((sec, index) => (
             <div key={index} style={{ marginTop: '14px' }}>
-              <div style={{ fontFamily: "'Geist Mono', monospace", fontSize: '9px', letterSpacing: '.7px', color: '#8A6A1C', paddingBottom: '5px', borderBottom: '1.5px solid #121214' }}>
+              <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '700', fontVariantNumeric: 'tabular-nums', fontSize: '9px', letterSpacing: '.7px', color: '#8A6508', paddingBottom: '5px', borderBottom: '1.5px solid #1F2A44' }}>
                 {sec?.h}
               </div>
               {list(sec?.rows).map((r, index2) => (
-                <div key={index2} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '8px 0', borderBottom: '1px solid #EFEDE7', fontSize: '12px' }}>
-                  <span style={{ color: '#6B6A70' }}>
+                <div key={index2} style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', padding: '8px 0', borderBottom: '1px solid #F1F5F9', fontSize: '12px' }}>
+                  <span style={{ color: '#5B6B82' }}>
                     {r?.k}
                   </span>
                   <span style={{ textAlign: 'right', fontWeight: str(r?.w), fontFamily: str(r?.ff) }}>
@@ -70,28 +70,28 @@ export function DocumentScreen({ vm }: { vm: ViewModel }) {
             </div>
           ))}
           {vm.dc?.note ? (
-            <div style={{ fontSize: '11px', color: '#6B6A70', marginTop: '12px', lineHeight: '1.5' }}>
+            <div style={{ fontSize: '11px', color: '#5B6B82', marginTop: '12px', lineHeight: '1.5' }}>
               {vm.dc?.note}
             </div>
           ) : null}
         </div>
-        <div style={{ margin: '14px 18px 16px', paddingTop: '12px', borderTop: '1px dashed #D5D3CC', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '10px' }}>
+        <div style={{ margin: '14px 18px 16px', paddingTop: '12px', borderTop: '1px dashed #CBD5E1', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end', gap: '10px' }}>
           <div>
-            <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '18px', fontStyle: 'italic' }}>
+            <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '800', letterSpacing: '-.5px', fontSize: '18px', fontStyle: 'italic' }}>
               {vm.dc?.signer}
             </div>
-            <div style={{ fontFamily: "'Geist Mono', monospace", fontSize: '8.5px', letterSpacing: '.6px', color: '#8B8A90', marginTop: '2px' }}>
+            <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '700', fontVariantNumeric: 'tabular-nums', fontSize: '8.5px', letterSpacing: '.6px', color: '#5B6B82', marginTop: '2px' }}>
               {vm.dc?.signerRole}
             </div>
           </div>
-          <div style={{ width: '58px', height: '58px', flex: 'none', borderRadius: '29px', border: '1.5px solid #D9B456', color: '#8A6A1C', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontFamily: "'Geist Mono', monospace", fontSize: '7.5px', letterSpacing: '.4px', lineHeight: '1.2', transform: 'rotate(-12deg)' }}>
+          <div style={{ width: '58px', height: '58px', flex: 'none', borderRadius: '29px', border: '1.5px solid #F2C94C', color: '#8A6508', display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '700', fontVariantNumeric: 'tabular-nums', fontSize: '7.5px', letterSpacing: '.4px', lineHeight: '1.2', transform: 'rotate(-12deg)' }}>
             MB
             <br />
             VERIFIED
           </div>
         </div>
       </div>
-      <div style={{ fontSize: '11.5px', color: '#8B8A90', textAlign: 'center', marginTop: '12px' }}>
+      <div style={{ fontSize: '11.5px', color: '#5B6B82', textAlign: 'center', marginTop: '12px' }}>
         {"Preview · "}{vm.dc?.file}
       </div>
     </div>

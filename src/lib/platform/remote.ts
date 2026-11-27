@@ -51,6 +51,8 @@ export interface RemoteHost {
   go(s: AppScreen, extra?: Partial<AppState>): void;
   jump(s: AppScreen, extra?: Partial<AppState>): void;
   back(): void;
+  /** After a completed step: a sell order stays on its stage page, a buy order goes back (v6 design). */
+  afterStep(): void;
   resume(ret: string): void;
   top(): void;
   order(id?: string): Order | undefined;
@@ -906,12 +908,12 @@ export class Remote {
 
   async acceptQuote() {
     const o = this.s.order(); if (!o) return;
-    await this.act('quote', o.id, (ver, c) => this.withQuoteNo(c, no => ordersSvc.acceptQuote(c.id, { quotationNumber: no, version: ver })), { success: 'Quotation accepted', done: () => this.s.back() });
+    await this.act('quote', o.id, (ver, c) => this.withQuoteNo(c, no => ordersSvc.acceptQuote(c.id, { quotationNumber: no, version: ver })), { success: 'Quotation accepted', done: () => this.s.afterStep() });
   }
 
   async declineQuote() {
     const o = this.s.order(); if (!o) return;
-    await this.act('quote', o.id, (ver, c) => this.withQuoteNo(c, no => ordersSvc.declineQuote(c.id, { quotationNumber: no, version: ver, reason: 'Declined by customer' })), { success: 'Quotation declined', done: () => this.s.back() });
+    await this.act('quote', o.id, (ver, c) => this.withQuoteNo(c, no => ordersSvc.declineQuote(c.id, { quotationNumber: no, version: ver, reason: 'Declined by customer' })), { success: 'Quotation declined', done: () => this.s.afterStep() });
   }
 
   /* contract */
@@ -926,7 +928,7 @@ export class Remote {
     if (!hash) { await this.loadContract(o.id); hash = this.st.om[o.id]?.contract?.documentHash; }
     if (!hash) return this.s.flash('The e-contract is not ready yet. Try again in a moment.');
     await this.act('contract', o.id, (ver, c) => ordersSvc.signContract(c.id, { documentHash: hash as string, nameTyped: name.trim(), readConfirmed: true, version: ver }), {
-      success: 'Contract signed', done: () => { this.s.setState({ sign: { read: false, name: '' }, signErr: '' }); this.s.back(); },
+      success: 'Contract signed', done: () => { this.s.setState({ sign: { read: false, name: '' }, signErr: '' }); this.s.afterStep(); },
       onFail: e => { if (isApiError(e) && /hash|contract/.test(e.code)) this.bg(this.loadContract(o.id)); this.s.setState({ signErr: apiMessage(e) }); },
     });
   }
@@ -982,19 +984,19 @@ export class Remote {
     const o = this.s.order(), f = this.st.sc; if (!o) return;
     const payout = { method: PAYOUT_WIRE[f.method] ?? 'other', label: f.method, ...(f.method === 'UPI' ? { holder: f.bank.trim(), upiId: f.account.trim() } : { bankName: f.bank.trim(), account: f.account.trim() }) };
     await this.act('sellerform', o.id, (ver, c) => ordersSvc.submitSellerForm(c.id, { payout, inspectionSlot: { date: f.date, time: f.time, address: f.address.trim() }, confirmed: true, version: ver }), {
-      success: 'Form submitted for approval', done: (u) => { this.s.patchOrder(u.id, c => ({ ...c, form: { method: f.method, date: f.date, time: f.time, address: f.address.trim() } })); this.s.setState({ scErr: {} }); this.s.back(); },
+      success: 'Form submitted for approval', done: (u) => { this.s.patchOrder(u.id, c => ({ ...c, form: { method: f.method, date: f.date, time: f.time, address: f.address.trim() } })); this.s.setState({ scErr: {} }); this.s.afterStep(); },
       onFail: e => this.orderFail(e, 'scErr'),
     });
   }
 
   async acceptReports() {
     const o = this.s.order(); if (!o) return;
-    await this.act('reports', o.id, (ver, c) => ordersSvc.acceptInspection(c.id, ver), { success: 'Reports accepted', done: () => this.s.back() });
+    await this.act('reports', o.id, (ver, c) => ordersSvc.acceptInspection(c.id, ver), { success: 'Reports accepted', done: () => this.s.afterStep() });
   }
 
   async queryReports(note: string) {
     const o = this.s.order(); if (!o) return;
-    await this.act('reports', o.id, (ver, c) => ordersSvc.queryInspection(c.id, note, ver), { success: 'Clarification sent', done: () => { this.s.setState({ repNote: '', repErr: '' }); this.s.back(); }, onFail: e => this.s.setState({ repErr: apiMessage(e) }) });
+    await this.act('reports', o.id, (ver, c) => ordersSvc.queryInspection(c.id, note, ver), { success: 'Clarification sent', done: () => { this.s.setState({ repNote: '', repErr: '' }); this.s.afterStep(); }, onFail: e => this.s.setState({ repErr: apiMessage(e) }) });
   }
 
   async confirmReceipt() {

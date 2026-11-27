@@ -1,4 +1,4 @@
-// Generated from the Claude Design page "Mineral Bridge Web v5" — keep markup and styles in sync with the design.
+// Generated from the Claude Design page "Mineral Bridge Web v6" — keep markup and styles in sync with the design.
 import type { ViewModel } from '../../../types/platform';
 import { list, str } from '../../../lib/platform/view';
 import { Val } from '../ui/Val';
@@ -6,14 +6,14 @@ import { Val } from '../ui/Val';
 export function KycStatusScreen({ vm }: { vm: ViewModel }) {
   return (
     <div style={{ padding: '0', animation: 'fadeUp .45s cubic-bezier(.2,.8,.2,1) both' }}>
-      <div style={{ padding: '18px', borderRadius: '22px', background: '#121214', color: '#F4F2ED' }}>
-        <div style={{ fontFamily: "'Geist Mono', monospace", fontSize: '10.5px', letterSpacing: '.8px', color: '#9C9AA0' }}>
+      <div style={{ padding: '18px', borderRadius: '22px', background: '#1F2A44', color: '#F8FAFC' }}>
+        <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '700', fontVariantNumeric: 'tabular-nums', fontSize: '10.5px', letterSpacing: '.8px', color: '#94A3B8' }}>
           {vm.kycStatusRef}
         </div>
-        <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '28px', marginTop: '6px' }}>
+        <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '800', letterSpacing: '-.5px', fontSize: '23.0px', marginTop: '6px' }}>
           {vm.kycStatusWord}
         </div>
-        <div style={{ fontSize: '12.5px', color: '#C9C7C0', marginTop: '4px' }}>
+        <div style={{ fontSize: '12.5px', color: '#CBD5E1', marginTop: '4px' }}>
           {"Submitted "}{vm.kycSubmitted}
         </div>
       </div>
@@ -25,24 +25,24 @@ export function KycStatusScreen({ vm }: { vm: ViewModel }) {
             </b>
             {' '}{vm.kycReason}
           </div>
-          <div onClick={vm.goKycFix} style={{ cursor: 'pointer', marginTop: '8px', height: '50px', borderRadius: '16px', background: '#121214', color: '#F4F2ED', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '600' }}>
+          <div onClick={vm.goKycFix} style={{ cursor: 'pointer', marginTop: '8px', height: '50px', borderRadius: '16px', background: '#1F2A44', color: '#F8FAFC', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: '600' }}>
             Upload a new document
           </div>
         </>
       ) : null}
       {vm.kycIsNone ? (
-        <div style={{ marginTop: '12px', padding: '13px 15px', borderRadius: '16px', background: '#FBF3E4', color: '#7A4A08', fontSize: '13px', lineHeight: '1.5' }}>
+        <div style={{ marginTop: '12px', padding: '13px 15px', borderRadius: '16px', background: '#FEF7E0', color: '#6B4E05', fontSize: '13px', lineHeight: '1.5' }}>
           You can browse now. Verification is needed before you buy or sell.
         </div>
       ) : null}
-      <div style={{ fontFamily: "'Geist Mono', monospace", fontSize: '10.5px', letterSpacing: '.8px', color: '#8B8A90', margin: '20px 4px 8px' }}>
+      <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '700', fontVariantNumeric: 'tabular-nums', fontSize: '10.5px', letterSpacing: '.8px', color: '#5B6B82', margin: '20px 4px 8px' }}>
         DOCUMENTS
       </div>
-      <div style={{ borderRadius: '20px', background: '#fff', border: '1px solid #E4E2DB', padding: '2px 15px' }}>
+      <div style={{ borderRadius: '20px', background: '#fff', border: '1px solid #E2E8F0', padding: '2px 15px' }}>
         {list(vm.kycList).map((d, index) => (
-          <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 0', borderBottom: '1px solid #EFEDE7', fontSize: '13.5px' }}>
+          <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px 0', borderBottom: '1px solid #F1F5F9', fontSize: '13.5px' }}>
             <div style={{ flex: '1', minWidth: '0' }}>
-              <div style={{ color: '#6B6A70' }}>
+              <div style={{ color: '#5B6B82' }}>
                 {d?.n}
               </div>
               <div style={{ fontWeight: '600', marginTop: '2px', color: str(d?.fg) }}>
@@ -63,8 +63,8 @@ export function KycStatusScreen({ vm }: { vm: ViewModel }) {
         ))}
       </div>
       {vm.devTools && vm.kycIsPending ? (
-        <div style={{ marginTop: '14px', padding: '14px', borderRadius: '16px', border: '1px dashed #D5D3CC' }}>
-          <div style={{ fontFamily: "'Geist Mono', monospace", fontSize: '10.5px', letterSpacing: '.8px', color: '#8B8A90' }}>
+        <div style={{ marginTop: '14px', padding: '14px', borderRadius: '16px', border: '1px dashed #CBD5E1' }}>
+          <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '700', fontVariantNumeric: 'tabular-nums', fontSize: '10.5px', letterSpacing: '.8px', color: '#5B6B82' }}>
             DEMO · SIMULATE COMPLIANCE DECISION
           </div>
           <div style={{ display: 'flex', gap: '8px', marginTop: '10px' }}>

@@ -1,8 +1,8 @@
 /* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-expressions -- ported 1:1 from the design's view logic, which builds free-form records and uses short-circuit calls */
-// Platform state and view-model logic, ported from the Claude Design page "Mineral Bridge Web v5".
+// Platform state and view-model logic, ported from the Claude Design page "Mineral Bridge Web v6".
 // renderVals() returns the values the screen components in src/components/platform render against.
 import { MB4 } from './data';
-import { compressImage, imageUrl } from '../images';
+import { compressImage, imageUrl, productImage } from '../images';
 import { kycDocLabel, kycDocRows, kycRequiredDocIds, lotAvailabilityLabel, otpEmailForDisplay, paymentNeedsReference, paymentSubmitError, pendingVariation, productHasLotDocuments, productIsAvailableOnRequest, productIsSoldOut, resolveCountryCode, screenPollsOrders } from '../mappers';
 import { Remote, IS_DEV, fmtBytes, contactIdentifier } from './remote';
 import type { RemoteHost } from './remote';
@@ -39,6 +39,41 @@ const KYC_INFO: AnyObj = {
   address: { title: 'Proof of address', short: 'Utility bill, bank statement or lease', ratio: '0.75', hint: 'Fit the whole page inside the frame', icon: 'M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z', desc: 'A utility bill, bank statement or lease showing your name and address.', tips: ['Dated within the last 3 months', 'Your full name and address are visible', 'The whole page is in the photo, or upload the PDF'] },
   biz: { title: 'Business document', short: 'Registration, licence or permit', ratio: '0.75', hint: 'Fit the whole page inside the frame', icon: 'M4 21V5a2 2 0 0 1 2-2h8l6 6v12zM14 3v6h6M8 13h8M8 17h5', desc: 'Your company registration, mining or dealer licence, or trading permit.', tips: ['Shows the registered business name', 'Registration or licence number readable', 'Not expired'] }
 };
+/** Sell journey (v6): one page per phase, in order. SELL_OPEN is the stage key at which each page opens. */
+const SELL_SCR = ['sellReview', 'quote', 'contract', 'sellConfirm', 'sellInspect', 'payout', 'shipment', 'saleDone'];
+const SELL_OPEN = ['submitted', 'quote', 'confirmed', 'contractMb', 'form', 'approved', 'picked', 'received'];
+/** Screens shown inside "My account" (with the account side menu). The last three are this app's own account pages. */
+const ACCT_SCR = ['profile', 'editProfile', 'bizType', 'kycStatus', 'prefs', 'notifs', 'help', 'orders', 'refunds', 'auctions', 'auction', 'auctionWon', 'contactOtp', 'support', 'supportThread'];
+const AUC_ORD_SCR = ['order', 'pay', 'shipment', 'receipt', 'chat', 'doc', 'refund', 'cancel'];
+const ICON: AnyObj = {
+  buy: 'M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0',
+  sell: 'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
+  orders: 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 12h6M9 16h4',
+  bell: 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0',
+  shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6zM9 12l2 2 4-4',
+  pen: 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z',
+  truck: 'M1 7h13v10H1zM14 10h4l3 3v4h-7M5 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4M17 20a2 2 0 1 0 0-4 2 2 0 0 0 0 4',
+  lock: 'M5 11h14v10H5zM8 11V7a4 4 0 0 1 8 0v4',
+  flask: 'M9 3h6M10 3v6l-5 9a2 2 0 0 0 1.7 3h10.6a2 2 0 0 0 1.7-3l-5-9V3M7.5 15h9',
+  tag: 'M20.6 13.4l-7.2 7.2a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8zM7.5 7.5h.01',
+  mining: 'M14.531 12.469 6.619 20.38a1 1 0 1 1-3-3l7.912-7.912M15.686 4.314A12.5 12.5 0 0 0 5.461 2.958 1 1 0 0 0 5.58 4.71a22 22 0 0 1 6.318 3.393M17.7 3.7a1 1 0 0 0-1.4 0l-4.6 4.6a1 1 0 0 0 0 1.4l2.6 2.6a1 1 0 0 0 1.4 0l4.6-4.6a1 1 0 0 0 0-1.4zM19.686 8.314a12.501 12.501 0 0 1 1.356 10.225 1 1 0 0 1-1.751-.119 22 22 0 0 0-3.393-6.319',
+  check: 'M20 6L9 17l-5-5',
+  clock: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M12 6v6l4 2',
+  x: 'M18 6L6 18M6 6l12 12',
+  profile: 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8',
+  auctions: 'M14 13l-7.5 7.5a2.1 2.1 0 0 1-3-3L11 10M16 16l6-6M8 8l6-6M9 7l8 8',
+  refunds: 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5',
+  kycStatus: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+  notifs: 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0',
+  prefs: 'M4 4h16v12H5.2L4 17.2z',
+  help: 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01'
+};
+/** Mineral photo credits (Wikimedia Commons), listed in the footer: [mineral, file, author, licence]. */
+const PHOTO_CREDITS = [['Copper cathode', 'Copper cathode from copper starter sheets.png', 'Xstrata Technology', 'CC BY-SA 3.0'], ['Lepidolite', 'Lepidolite.jpg', 'Maatpublishing', 'CC BY-SA 4.0'], ['Cobalt hydroxide', 'Cobalt (II) hydroxide in solution.jpg', 'Omi1103', 'CC BY 4.0'], ['Gold bar 100 g', 'Umicore 100-g-Goldbarren.jpg', 'Umicore AG & Co. KG', 'CC BY-SA 4.0'], ['Rare earth carbonate (cerium)', 'Cerium carbonate (hydrate).jpg', 'Leiem', 'CC BY-SA 4.0'], ['Tin concentrate', 'Tin concentrates.jpg', 'Nuno Madeira Alves', 'CC BY-SA 4.0'], ['Aluminium', 'Aluminium chunk.JPG', 'Robert.Baruch', 'CC BY-SA 3.0'], ['Copper', 'Native Copper Macro Digon3.jpg', 'Jonathan Zander (Digon3)', 'CC BY-SA 3.0'], ['Bauxite', 'Bauxite (GeoDIL number - 156).jpg', 'Darla Sondrol', 'CC0'], ['Nickel (garnierite)', 'Garnierite (GeoDIL number - 2526).jpg', 'Nessa Eull', 'CC0'], ['Zinc (sphalerite)', 'Sphalerite - Creede, Mineral County, Colorado, USA.jpg', 'Ivar Leidus', 'CC BY-SA 4.0'], ['Lead (galena)', 'Galena - Huallanca, Bologesi, Ancash, Peru.jpg', 'Ivar Leidus', 'CC BY-SA 4.0'], ['Lithium (spodumene)', 'Spodumene (GeoDIL number - 400).jpg', 'Shannon Heinle', 'CC0'], ['Cobalt (cobaltite)', 'Cobaltite-LTH72C.JPG', 'Robert M. Lavinsky', 'CC BY-SA 3.0'], ['Tantalum (coltan)', 'Coltán en filón de cuarzo.012 - Río Sor.jpg', 'Fernando Losada Rodríguez', 'CC BY-SA 4.0'], ['Niobium (pyrochlore)', 'Pyrochlore-191619.jpg', 'Robert M. Lavinsky', 'CC BY-SA 3.0'], ['Quartz', 'Quartz, Tibet.jpg', 'JJ Harrison', 'CC BY-SA 2.5'], ['Graphite', 'Graphite (Ceylon) 36.jpg', 'James St. John', 'CC BY 2.0'], ['Mica (muscovite)', 'Muscovite with spessartine NHMLA.png', 'Eric Polk', 'CC BY-SA 4.0'], ['Feldspar (orthoclase)', 'Orthoclase Shigar MNHN Minéralogie.jpg', 'Marie-Lan Taÿ Pamart', 'CC BY 4.0'], ['Limestone', 'Shell limestone 4.jpg', 'Anbarasu Thiraviyam', 'CC BY-SA 4.0'], ['Diamond (rough)', 'Rough Diamond.jpg', 'DGPC/ADF Luísa Oliveira', 'CC0'], ['Emeralds (rough)', 'Rough emerald crystals from Panjshir Valley Afghanistan.jpg', 'Paweł Maliszczak', 'CC BY-SA 4.0'], ['Ruby', 'Ruby in granite.jpg', 'Bluecloud9', 'CC0'], ['Sapphire (corundum)', 'Sapphire (corundum) (26663158752).jpg', 'James St. John', 'CC BY 2.0']];
+/** CSS url() for a lot's picture (its mineral photo when the lot only has a generic category image). */
+const PIMG = (p: any) => IMG(productImage(p));
+/** Duration of the brand loader shown when Home opens (v6 design). */
+const HOME_LOAD_MS = 1300;
 export class PlatformController {
   /** Signed-out, empty state plus the web UI prefs. Orders, cart, catalogue etc. only ever come from the /v2 API. */
   state: AnyObj = { ...freshState(), ready: false, booting: true, navMin: false, listView: 'cards', webRail: false };
@@ -47,6 +82,7 @@ export class PlatformController {
   private listeners = new Set<() => void>();
   private _t: any;
   private _tick: any;
+  private _hl: any;
   private pending = new Set<Promise<unknown>>();
   private dueSeen = new Map<string, number>();
 
@@ -58,7 +94,11 @@ export class PlatformController {
       this.state = { ...prev, ...patch };
       this.version += 1;
       this.listeners.forEach(l => l());
-      if (this.state.screen !== prev.screen) this.remote.onScreen(this.state.screen, prev.screen);
+      if (this.state.screen !== prev.screen) {
+        this.remote.onScreen(this.state.screen, prev.screen);
+        // v6: a short brand loader plays each time Home opens.
+        if (this.state.screen === 'home') { clearTimeout(this._hl); this.setState({ homeLoad: true }); this._hl = setTimeout(() => this.setState({ homeLoad: false }), HOME_LOAD_MS); }
+      }
     }
     if (cb) cb();
   }
@@ -78,39 +118,258 @@ export class PlatformController {
   renderVals(): any {
     const v = this._rv(), s = this.state, scr = s.screen || 'welcome';
     const ONB = ['welcome','auth','otp','regType','regDetails','kyc','kycDoc','kycDone'];
-    const WIDE = ['home','cats','minerals','lots','orders','auctions','refunds','notifs','profile','help','sellCats'];
-    const MID = ['detail','order','auction','shipment','chat','doc','receipt','report','quote','contract','auctionWon'];
-    const TT: AnyObj = { home:'Home', cats:'Buy minerals', sellCats:'Sell minerals', orders:'Orders', profile:'Profile', notifs:'Notifications', help:'Help & support', refunds:'Refunds', auctions:'Auctions' };
+    const FULL = ['home','cats','minerals','lots','detail'];
+    const WIDE = ['orders','refunds','notifs','profile','help','sellCats','auctions'];
+    const MID = ['order','auction','shipment','chat','doc','receipt','report','quote','contract','auctionWon','sellReview','sellInspect','payout'];
+    const TT: AnyObj = { home:'Home', cats:'Buy minerals', sellCats:'Sell minerals', orders:'My orders', profile:'My profile', notifs:'Notifications', help:'Help & support', refunds:'Refunds', auctions:'Auctions' };
     const m = v.m || ({} as AnyObj);
     const onboard = ONB.includes(scr);
+    const M = X(), ready = !!(s.ready && MB4);
     const railOpen = !!s.webRail;
     const rail = (v.rail || []).map((g?: any) => ({ ...g, items: (g.items || []).map((r?: any) => ({ ...r, tap: () => { this.setState({ webRail:false }); r.tap && r.tap(); } })) }));
-    const split = !onboard && !WIDE.includes(scr) && !['chat', 'placed', 'sellDone', 'doc', 'cart', 'contactOtp', 'support', 'supportThread'].includes(scr) || (scr === 'cart' && !!(s.cart || []).length);
+    const o = ready ? this.order() : null;
+    const aucOrder = !!(o && o.auction && AUC_ORD_SCR.includes(scr));
+    const sellOrder = !!(o && o.kind === 'sell' && (SELL_SCR.includes(scr) || ['order','report','chat','doc','cancel'].includes(scr)));
+    const acct = !onboard && (ACCT_SCR.includes(scr) || aucOrder);
+    const split = !onboard && !FULL.includes(scr) && !WIDE.includes(scr) && !['chat', 'placed', 'sellDone', 'saleDone', 'doc', 'cart', 'contactOtp', 'support', 'supportThread'].includes(scr) || (scr === 'cart' && !!(s.cart || []).length);
     const sm = this.webSummary(scr, m);
     const lv = s.listView || 'cards';
-    return Object.assign({}, v, { rail,
+    const u = s.user;
+    const first = (name?: any) => String(name || '').trim().split(' ')[0] || '';
+    const IM = (n?: any) => IMG(n);
+    const BUYSET = ['cats','minerals','lots','detail','cart','checkout','placed'];
+    const SELLSET = ['sellCats','sellForm','sellDone'];
+    const navOn: AnyObj = { buy: BUYSET.includes(scr), sell: SELLSET.includes(scr) || sellOrder, orders: scr === 'orders' || (!!o && !sellOrder && !aucOrder && ['order','quote','contract','payInsp','pay','receipt','shipment','refund','cancel','priceVar'].includes(scr)), alerts: scr === 'notifs' };
+    const kycT = !u ? ['SIGN IN', '#EFF6FF', '#1F2A44'] : (({ verified: ['VERIFIED', '#E2F2E9', '#17704C'], pending: ['IN REVIEW', '#FEF7E0', '#6B4E05'], rejected: ['ACTION', '#FDECEA', '#B42318'], none: ['KYC', '#FDECEA', '#B42318'] } as AnyObj)[u.kyc] || ['KYC', '#F1F5F9', '#334155']);
+    const title = m.title || TT[scr] || '';
+    const crumbs: AnyObj[] = [];
+    if (!onboard && scr !== 'home') {
+      crumbs.push({ l: 'Home', tap: () => this.jump('home') });
+      if (acct && scr !== 'profile') crumbs.push({ l: 'My account', tap: () => this.jump('profile') });
+      if (aucOrder || ['auction', 'auctionWon'].includes(scr)) crumbs.push({ l: 'Auctions', tap: () => this.jump('auctions') });
+      if (o && scr !== 'order' && ['quote','contract','payInsp','pay','receipt','shipment','refund','cancel','report','sellConfirm','chat','sellReview','sellInspect','payout','saleDone','priceVar'].includes(scr)) crumbs.push({ l: o.id, tap: () => { this.setState({ stack: aucOrder ? ['auctions'] : ['orders'], screen: 'order' }); this.top(); } });
+      if (SELLSET.includes(scr) && scr !== 'sellCats') crumbs.push({ l: 'Sell minerals', tap: () => this.jump('sellCats') });
+      if (['cart', 'checkout'].includes(scr)) crumbs.push({ l: 'Buy minerals', tap: () => this.jump('cats') });
+    }
+    const web: AnyObj = {
+      goAuctions: () => this.jump('auctions', { atab: 'live' }), goHelp: () => this.jump('help'),
+      goHome: () => this.jump('home'), goAccount: () => this.jump('profile'),
+      goSellOrders: () => { this.setState({ otab: 'sell' }); this.jump('orders'); },
+      goTrading: () => u ? this.go('kycStatus') : (v.goSignup && v.goSignup()),
+      onboard, app: !onboard, acct, devTools: DEV_TOOLS,
+      pageCls: onboard ? 'onbPage' : 'wrap appPage', cardCls: onboard ? 'onbCard' : acct ? 'acct' : 'plainShell', colCls: onboard ? 'onbCol' : '',
+      split, barCta: !onboard && !!m.cta && !split && scr !== 'detail', onbCta: onboard && !!m.cta,
+      sumH: sm.h, sumTitle: sm.title, sumSub: sm.sub || '', sum: sm.rows || [], hasSum: !!(sm.rows && sm.rows.length), sumNote: sm.note || '',
+      w: onboard || acct || FULL.includes(scr) || WIDE.includes(scr) ? '100%' : split ? '1240px' : MID.includes(scr) ? '1040px' : '820px',
+      title, hasStep: !!m.step, canBack: !!m.canBack,
+      onbHead: onboard && (!!m.canBack || !!m.title),
+      showTitle: !onboard && !['home','lots','detail','placed','sellDone','saleDone'].includes(scr) && !!title,
+      crumbs, hasCrumbs: crumbs.length > 0,
+      railOpen, railLabel: railOpen ? 'Hide screen list' : 'Jump to any screen',
+      toggleRail: () => this.setState({ webRail: !this.state.webRail }),
+      stop: (e?: any) => e.stopPropagation(),
+      country: u ? (u.country || '—') : 'Guest', kycShort: kycT[0], kycBg: kycT[1], kycFg: kycT[2],
+      acctLabel: u ? (first(u.name) || 'Account') : 'Sign in',
+      onSearch: (e?: any) => { const val = e.target.value; if (['cats', 'sellCats'].includes(this.state.screen)) this.setState({ search: val }); else this.jump('cats', { search: val }); },
+      hnav: [['buy', 'Buy', ICON.buy, () => this.jump('cats')], ['sell', 'Sell', ICON.sell, () => this.jump('sellCats')], ['orders', 'Orders', ICON.orders, () => this.jump('orders')], ['mining', 'Mining', ICON.mining, () => {}], ['alerts', 'Alerts', ICON.bell, () => this.go('notifs')]].map(([id, label, icon, tap]: any) => ({ label, icon, tap, badge: id === 'alerts' ? (v.unread || '') : '', cur: navOn[id] ? 'page' : 'false', fg: navOn[id] ? '#8A6508' : '#1F2A44' })),
+      perks: [[ICON.shield, 'Inspected, tested lots', 'Every lot lists its lab, certificate and origin'], [ICON.pen, 'Quotation, e-contract & escrow', 'Agree the price, sign online, pay securely'], [ICON.truck, 'Insured, tracked delivery', 'Sealed transport with live updates']].map(([icon, t, sub]: any) => ({ icon, title: t, sub })),
+      footCats: [], promise: ['Third-party tested lots', 'Signed e-contracts', 'Escrow-protected payments', 'Insured, sealed transport', 'KYC-verified traders'].map((label?: any) => ({ label })),
+      lotTotal: '', mnav: [], actBar: null, photoCredits: [], collage: [], catTree: []
+    };
+    const listVals = {
       isCards: lv === 'cards', isTable: lv === 'table',
       setCards: () => { this.setState({ listView: 'cards' }); try { localStorage.setItem('mb5-listview', 'cards'); } catch {} },
       setTable: () => { this.setState({ listView: 'table' }); try { localStorage.setItem('mb5-listview', 'table'); } catch {} },
       cardsBg: lv === 'cards' ? '#fff' : 'transparent', tableBg: lv === 'table' ? '#fff' : 'transparent',
       listCount: scr === 'refunds' ? ((v.refundList || []).length + ' refund' + ((v.refundList || []).length === 1 ? '' : 's')) : ((v.orderList || []).length + ' item' + ((v.orderList || []).length === 1 ? '' : 's')),
-      web: {
-      goAuctions: () => this.jump('auctions'), goHelp: () => this.jump('help'),
-      onboard, app: !onboard, devTools: DEV_TOOLS,
-      split, barCta: !!m.cta && !split,
-      sumH: sm.h, sumTitle: sm.title, sumSub: sm.sub || '', sum: sm.rows || [], hasSum: !!(sm.rows && sm.rows.length), sumNote: sm.note || '',
-      sideCls: s.navMin ? 'w5-min' : '', navLabel: s.navMin ? 'Expand menu' : 'Collapse menu',
-      navIcon: s.navMin ? 'M9 18l6-6-6-6' : 'M15 18l-6-6 6-6',
-      toggleNav: () => { const n = !this.state.navMin; this.setState({ navMin: n }); try { localStorage.setItem('mb5-navmin', n ? '1' : ''); } catch {} },
-      w: onboard ? '520px' : (WIDE.includes(scr) || split ? '1200px' : (MID.includes(scr) ? '1040px' : '760px')),
-      title: m.title || TT[scr] || '',
-      hasStep: !!m.step, canBack: !!m.canBack,
-      railOpen, railLabel: railOpen ? 'Hide screen list' : 'Jump to any screen',
-      toggleRail: () => this.setState({ webRail: !this.state.webRail }),
-      stop: (e?: any) => e.stopPropagation(),
-      nav: (v.tabs || []).map((t?: any) => ({ label:t.label, icon:t.icon, tap:t.tap, cls: t.bg === '#D9B456' ? 'on' : '',
-        style: 'display:flex; align-items:center; gap:12px; width:100%; height:44px; padding:0 14px; border:none; border-radius:12px; cursor:pointer; font-family:inherit; font-size:14px; font-weight:600; text-align:left; transition:background .15s; ' + (t.bg === '#D9B456' ? 'background:#D9B456; color:#121214;' : 'background:transparent; color:#B9B7BD;') }))
-    } });
+    };
+    if (!ready) return Object.assign({}, v, listVals, { rail, web, homeLoad: false });
+    const mcat = M.catOf(s.mineral) || M.CATS[0] || EMPTY_CAT;
+    const ccat = M.CATS.find((c?: any) => c.id === s.cat) || M.CATS[0] || EMPTY_CAT;
+    const lotsInCat = (c?: any) => M.PRODUCTS.filter((x?: any) => c.minerals.some(([mm]: any) => mm === x.mineral));
+    const track = (() => { const list = s.orders.map((x?: any) => ({ x, vw: this.view(x) })).filter((t?: any) => !t.vw.done && !t.vw.rej); const t = list.find((t?: any) => t.vw.you) || list[0]; if (!t || !u) return null; return { h: t.x.kind === 'sell' ? 'Track your sell request' : 'Track your order', id: t.vw.id, title: t.vw.title, status: t.vw.status, pillBg: t.vw.pillBg, pillFg: t.vw.pillFg, pct: t.vw.pct, next: t.vw.next, tap: () => this.go('order', { oid: t.x.id }) }; })();
+    const AN = [['profile', 'My profile', ['profile', 'editProfile', 'bizType', 'contactOtp']], ['orders', 'My orders', ['orders']], ['auctions', 'Auctions', ['auctions', 'auction', 'auctionWon']], ['refunds', 'Refunds', ['refunds']], ['kycStatus', 'KYC & documents', ['kycStatus']], ['notifs', 'Notifications', ['notifs']], ['prefs', 'Notification channels', ['prefs']], ['help', 'Help & support', ['help', 'support', 'supportThread']]];
+    const curNav = aucOrder ? 'auctions' : (AN.find((n?: any) => n[2].includes(scr)) || [])[0];
+    const liveN = (s.auctions || []).filter((a?: any) => a.status === 'live').length;
+    const pi = s.pdpI || 0;
+    const TH = [['cover', 'center', 'none', 'Photo 1'], ['cover', '30% 70%', 'scaleX(-1)', 'Photo 2'], ['180%', 'center', 'none', 'Close-up']].map(([size, pos, flip, label]: any, i: number) => ({ size, pos, flip, label, on: i === pi ? 'true' : 'false', bd: i === pi ? '#1F2A44' : '#E2E8F0', tap: () => this.setState({ pdpI: i }) }));
+    const prod = M.product(s.pid) || M.PRODUCTS[0] || EMPTY_PRODUCT;
+    const preI = scr === 'sellCats' ? 0 : scr === 'sellForm' ? 1 : 2;
+    const photoOf = (mineral?: any, fallback?: any) => { const p = M.PRODUCTS.find((x?: any) => x.mineral === mineral); return p ? PIMG(p) : PIMG({ mineral, img: fallback }); };
+    Object.assign(web, {
+      lotTotal: String(M.PRODUCTS.length),
+      actBar: !onboard && u && v.hasNeedYou && (v.needYou || [])[0] && !['order'].includes(scr) ? v.needYou[0] : null,
+      mnav: [{ name: 'Home', img: IM('mb-logo'), on: scr === 'home', tap: () => this.jump('home') } as AnyObj].concat(M.CATS.map((c?: any) => ({ name: c.name.split(' ')[0], img: IM(c.img), on: (scr === 'minerals' && s.cat === c.id) || (['lots', 'detail'].includes(scr) && mcat.id === c.id), tap: () => this.jump('minerals', { cat: c.id, search: '' }) })), [{ name: 'Sell', img: IM('gold-dust'), on: navOn.sell, tap: () => this.jump('sellCats') }, { name: 'Orders', img: IM('grain-shot'), on: navOn.orders, tap: () => this.jump('orders') }]).map((c?: any) => Object.assign(c, { bd: c.on ? '#B48811' : '#E2E8F0', fg: c.on ? '#8A6508' : '#1F2A44' })),
+      footCats: M.CATS.map((c?: any) => ({ name: c.name, tap: () => this.jump('minerals', { cat: c.id, search: '' }) })),
+      catTree: M.CATS.map((c?: any) => { const L = lotsInCat(c); return { name: c.name, n: String(L.length), img: IM(c.img), tap: () => this.go('minerals', { cat: c.id, search: '' }), minerals: c.minerals.map(([id, name]: any) => { const n = M.PRODUCTS.filter((x?: any) => x.mineral === id).length; return { name, n: n ? String(n) : 'Soon', fg: n ? '#1F2A44' : '#5B6B82', nfg: n ? '#8A6508' : '#5B6B82', tap: () => this.go('lots', { mineral: id, fform: 'All', labOnly: false, search: '', sort: 'featured' }) }; }) }; }),
+      collage: [['Copper', 'mineral:copper', 'copper', 'l', 0, 3, -7, '22px'], ['Gold', 'm-gold', 'gold', 'l', 1, 20, 6, '50%'], ['Lithium', 'mineral:lithium', 'lithium', 'l', 0, 38, 5, '50%'], ['Silver', 'm-silver', 'silver', 'l', 1, 55, -6, '22px'], ['Diamond', 'mineral:diamonds', 'diamonds', 'l', 0, 73, -4, '22px'], ['Aluminium', 'mineral:aluminium', 'bauxite', 'r', 0, 3, 7, '22px'], ['Platinum', 'm-platinum', 'platinum', 'r', 1, 20, -6, '50%'], ['Cobalt', 'mineral:cobalt', 'cobalt', 'r', 0, 38, -5, '50%'], ['Emeralds', 'mineral:emeralds', 'emeralds', 'r', 1, 55, 6, '22px'], ['Limestone', 'mineral:limestone', 'limestone', 'r', 0, 73, 4, '22px']].map(([label, img, to, side, inner, top, rot, rad]: any, i: number) => ({ label, img: IM(img), l: side === 'l' ? (inner ? '14cqw' : '1.5cqw') : 'auto', r: side === 'r' ? (inner ? '14cqw' : '1.5cqw') : 'auto', t: top + '%', s: 'min(96px, 11.5cqw)', rot: rot + 'deg', rad, dur: (5.6 + (i % 5) * 0.5).toFixed(1) + 's', delay: ((i * 0.43) % 2.4).toFixed(2) + 's', cls: '', tap: () => this.go('lots', { mineral: to, fform: 'All', labOnly: false, search: '', sort: 'featured' }) })),
+      photoCredits: PHOTO_CREDITS.map(([mm, file, by, lic]: any) => ({ m: mm, by, lic, href: 'https://commons.wikimedia.org/wiki/File:' + encodeURIComponent(file.replace(/ /g, '_')) })),
+      promos: [[ICON.shield, 'Every lot inspected', 'Lab-tested, with certificates'], [ICON.lock, 'Escrow-protected payment', 'Pay after quotation and e-contract'], [ICON.truck, 'Insured, tracked transport', 'Sealed, armoured, live updates']].map(([icon, t, sub]: any) => ({ icon, title: t, sub })),
+      homeSecs: M.CATS.map((c?: any) => { const L = lotsInCat(c); return { name: c.name, count: L.length + (L.length === 1 ? ' lot' : ' lots'), lots: L.map((x?: any) => this.lotCard(x)), tap: () => this.go('minerals', { cat: c.id, search: '' }) }; }),
+      trust: [[ICON.flask, 'Third-party tested', 'SGS, Bureau Veritas, Intertek and more'], [ICON.shield, 'KYC-verified traders', 'Every buyer and seller is checked'], [ICON.tag, 'Agreed quotations', 'Price is agreed before you pay'], [ICON.pen, 'Signed e-contracts', 'Both sides sign online'], [ICON.lock, 'Escrow-protected', 'Funds held until terms are met'], [ICON.truck, 'Insured transport', 'Sealed, armoured and tracked']].map(([icon, t, sub]: any) => ({ icon, title: t, sub })),
+      greet: u ? 'Hi, ' + (first(u.name) || 'there') : 'Welcome to Mineral Bridge',
+      kycSub: u ? (({ verified: 'You can buy and sell', pending: 'Usually reviewed within 1 working day', rejected: 'Upload a new document', none: 'Needed before you buy or sell' } as AnyObj)[u.kyc] || '') : '',
+      railCta: u ? v.goSell : v.goSignup, railCtaLabel: u ? 'Sell a mineral' : 'Create account or sign in',
+      track,
+      catLots: lotsInCat(ccat).length + ' lots',
+      minTiles: (v.subs || []).map((x?: any, i?: any) => Object.assign({}, x, { img: photoOf((ccat.minerals[i] || [])[0], ccat.img) })),
+      lotCatName: mcat.name, lotMinName: M.mineralName(s.mineral), lotImg: photoOf(s.mineral, mcat.img),
+      goLotCat: () => this.go('minerals', { cat: mcat.id, search: '' }),
+      lotRail: mcat.minerals.map(([id, name]: any) => { const n = M.PRODUCTS.filter((x?: any) => x.mineral === id).length, on = id === s.mineral; return { name, n: String(n), cur: on ? 'page' : 'false', fw: on ? 800 : 600, fg: on ? '#1F2A44' : '#334155', bg: on ? '#FEF7E0' : 'transparent', tap: () => this.setState({ mineral: id, fform: 'All', labOnly: false, sort: 'featured', sortOpen: false }) }; }),
+      hasFilters: s.fform !== 'All' || !!s.labOnly, labOn: s.labOnly ? 'true' : 'false', labMark: s.labOnly ? '✓' : '', sortExp: s.sortOpen ? 'true' : 'false',
+      formRadios: (v.formChips || []).map((c?: any) => Object.assign({}, c, { on: c.bg === '#1F2A44' ? 'true' : 'false', dot: c.bg === '#1F2A44' ? '#1F2A44' : 'transparent' })),
+      sellThis: () => { const mn = this.state.mineral; this.setState((x?: any) => ({ draft: Object.assign({}, x.draft, { mineral: mn }) })); this.resume('sellForm'); },
+      whyBuy: [[ICON.flask, 'Test reports on every listing', 'Lab, certificate and origin shown'], [ICON.tag, 'Price by quotation', 'Agreed before you pay anything'], [ICON.lock, 'Escrow-protected payment', 'Confirmed by Mineral Bridge'], [ICON.truck, 'Insured delivery', 'Sealed, tracked, proof of delivery']].map(([icon, t, sub]: any) => ({ icon, title: t, sub })),
+      pdpThumbs: TH, pdpMain: TH[pi] || TH[0],
+      pdpTrust: [[ICON.flask, 'Third-party tested'], [ICON.lock, 'Escrow payment'], [ICON.truck, 'Insured transport']].map(([icon, t]: any) => ({ icon, title: t })),
+      goLotsOfP: () => this.go('lots', { mineral: prod.mineral, fform: 'All', labOnly: false, search: '', sort: 'featured' }),
+      sellPre: ['Choose mineral', 'Mineral details', 'Request submitted'].map((l?: any, i?: any) => { const d = i < preI, c = i === preI; return { l, n: d ? '✓' : String(i + 1), fw: c ? 800 : 600, fg: d || c ? '#1F2A44' : '#5B6B82', bg: d ? '#1F2A44' : c ? '#F2C94C' : '#fff', dot: d ? '#F2C94C' : '#1F2A44', bd: d ? '#1F2A44' : c ? '#F2C94C' : '#CBD5E1', arrow: i < 2 }; }),
+      acctNav: AN.map(([id, label]: any) => { const on = curNav === id; return { label, icon: ICON[id] || ICON.profile, cur: on ? 'page' : 'false', bg: on ? '#FEF7E0' : 'transparent', fg: on ? '#1F2A44' : '#334155', sh: on ? 'inset 3px 0 0 #B48811' : 'none', badge: id === 'auctions' ? (liveN ? liveN + ' live' : '') : id === 'notifs' ? (v.unread || '') : '', badgeBg: '#B42318', tap: () => id === 'auctions' ? this.jump('auctions', { atab: 'live' }) : this.jump(id) }; })
+    });
+    return Object.assign({}, v, listVals, { rail, homeLoad: !!s.homeLoad && scr === 'home', web });
+  }
+  /** A lot as a product card (home sections, category search and the lot grid share it). */
+  lotCard(x?: any): any {
+    const off = productIsSoldOut(x);
+    return { id: x.id, name: x.name, form: x.form, img: PIMG(x), qty: lotAvailabilityLabel(x), grade: x.lab ? x.grade : 'Test report on request', lab: x.lab || 'No third-party report yet', origin: x.origin,
+      sub: x.form + ' · ' + String(x.origin || '').split(' · ').pop(), min: 'Min order ' + x.min + ' ' + x.unit,
+      off, opacity: off ? .55 : 1, hasLabTag: !!x.lab && !off, labBg: x.lab ? '#E2F2E9' : '#F1F5F9', labFg: x.lab ? '#17704C' : '#475569',
+      tap: () => this.go('detail', { pid: x.id, qty: String(x.min), qtyErr: '', pdpI: 0 }) };
+  }
+  /** After the customer completes a step: a sell order stays on its stage page (which now shows the next stage), a buy order goes back. */
+  afterStep(): any { const o = this.order(); if (o && o.kind === 'sell') { this.top(); return; } this.back(); }
+  openSellStage(i?: any): any {
+    const o = this.order(); if (!o) return; const scr = SELL_SCR[i];
+    if (scr === 'sellConfirm') this.prefillForms(o);
+    this.setState({ stack: ['orders', 'order'], screen: scr }); this.top();
+  }
+  /** A sell step page whose step is not the open one: show it read-only (no primary / secondary action). */
+  sellLocked(scr?: any): any {
+    if (!['quote', 'contract', 'sellConfirm', 'report'].includes(scr)) return false;
+    const o = this.order(); if (!o || o.kind !== 'sell') return false;
+    const next = X().stages('sell')[o.idx + 1];
+    return !(next && next.screen === scr && !o.rejected && !o.cancelled && (!o.hold || o.hold === 'changes'));
+  }
+  /** Opens an API-issued document of the current order whose type matches `re`. */
+  openOrderDoc(o?: any, re?: RegExp, missing?: string): any {
+    const d = ((o && o.docs) || []).find((x?: any) => re && re.test(String(x.type || '') + ' ' + String(x.label || '')));
+    if (d) return this.openDoc({ t: 'api', num: d.number, oid: o.id });
+    this.flash(missing || 'This document is not available yet');
+  }
+  /** Stage tracker for the sell journey pages (v6): the eight phases, where this page sits, and what happens next. */
+  sellStage(scr?: any): any {
+    const s = this.state, M = X(); if (!s.ready || !MB4) return { on: false };
+    const o = this.order(); if (!o || o.kind !== 'sell') return { on: false };
+    if (!SELL_SCR.concat(['report', 'order']).includes(scr)) return { on: false };
+    const st = M.stages('sell'), ph = M.phases('sell'), vw = this.view(o);
+    const ki = (k?: any) => st.findIndex((x?: any) => x.key === k);
+    const next = st[o.idx + 1], done = !next, closed = !!o.rejected || !!o.cancelled;
+    const curPh = done ? ph.length : next.phase;
+    const canOpen = (i?: any) => i >= 0 && i < SELL_SCR.length && o.idx >= ki(SELL_OPEN[i]) && (i !== 6 || !!o.ship);
+    const onOrder = scr === 'order';
+    const pIdx = scr === 'report' ? 4 : onOrder ? Math.min(curPh, ph.length - 1) : SELL_SCR.indexOf(scr);
+    const steps = ph.map((l?: any, i?: any) => { const d = done || i < curPh, c = !done && i === curPh, here = !onOrder && i === pIdx;
+      return { l, n: d ? '✓' : String(i + 1), cur: here ? 'step' : 'false', dotBg: d ? '#1F2A44' : c ? '#F2C94C' : '#fff', dotFg: d ? '#F2C94C' : c ? '#1F2A44' : '#5B6B82', dotBd: here ? '#B48811' : d ? '#1F2A44' : c ? '#F2C94C' : '#CBD5E1', fg: d || c ? '#1F2A44' : '#5B6B82', fw: here || c ? 800 : 600, line: i === ph.length - 1 ? 'transparent' : d ? '#1F2A44' : '#E2E8F0',
+        tap: () => canOpen(i) ? this.openSellStage(i) : this.flash(l + ' opens after ' + (ph[i - 1] || 'submission').toLowerCase()) }; });
+    const inPh = st.map((x?: any, i?: any) => Object.assign({ i }, x)).filter((x?: any) => x.phase === pIdx);
+    const lastI = inPh.length ? inPh[inPh.length - 1].i : 0;
+    const stState = done || pIdx < curPh ? 'done' : pIdx === curPh ? 'cur' : 'up';
+    const open = !closed && (!o.hold || o.hold === 'changes');
+    const nextHere = !!next && next.phase === pIdx;
+    const you = open && nextHere && next.actor === 'you';
+    const youScr = you ? next.screen : '';
+    const cont = !closed && stState === 'done' && pIdx < SELL_SCR.length - 1 && canOpen(pIdx + 1);
+    const cap = (t?: any) => String(t || '').charAt(0).toUpperCase() + String(t || '').slice(1);
+    let title, note, icon, iconBg, iconFg;
+    if (closed) { title = vw.headline; note = vw.next; icon = ICON.x; iconBg = '#FDECEA'; iconFg = '#B42318'; }
+    else if (stState === 'done') { title = ph[pIdx] + ' · complete'; note = (st[lastI] || st[0]).label + (cont ? '. Continue to ' + ph[pIdx + 1].toLowerCase() + '.' : pIdx === ph.length - 1 ? '. All records are stored in your history.' : '. The next stage opens when Mineral Bridge is ready.'); icon = ICON.check; iconBg = '#E2F2E9'; iconFg = '#17704C'; }
+    else if (stState === 'cur' && o.hold && o.hold !== 'changes') { title = (HOLD[o.hold] || 'On hold').split(' · ')[0]; note = (HOLD[o.hold] || 'On hold') + '.'; icon = ICON.clock; iconBg = '#FEF7E0'; iconFg = '#6B4E05'; }
+    else if (stState === 'cur' && you) { title = 'Your turn: ' + String(ACTION[next.screen] || '').toLowerCase(); note = youScr === scr ? 'Complete the step on this page to continue.' : 'Open the step to continue.'; icon = ICON.pen; iconBg = '#F2C94C'; iconFg = '#1F2A44'; }
+    else if (stState === 'cur') { title = 'Waiting on ' + ACTOR[next.actor]; note = 'Next: ' + next.label + '.'; icon = ICON.clock; iconBg = '#EFF6FF'; iconFg = '#1F2A44'; }
+    else { title = ph[pIdx] + ' has not started yet'; note = 'It opens after ' + (ph[pIdx - 1] || 'submission').toLowerCase() + '.'; icon = ICON.lock; iconBg = '#F1F5F9'; iconFg = '#475569'; }
+    const demoOk = !onOrder && vw.canDemo && !!next && (nextHere || (next.phase === pIdx + 1 && !canOpen(pIdx + 1)));
+    let best = -1; for (let i = 0; i <= Math.min(curPh, SELL_SCR.length - 1); i++) if (canOpen(i)) best = i;
+    const sub = inPh.map((x?: any, k?: any) => { const d = o.idx >= x.i, c = !d && !!next && next.key === x.key; return { l: x.label, who: x.actor === 'you' ? 'You' : cap(ACTOR[x.actor]), done: d, bg: d ? '#17704C' : '#fff', bd: d ? '#17704C' : c ? '#B48811' : '#CBD5E1', fg: d || c ? '#1F2A44' : '#5B6B82', fw: c ? 800 : 600, line: k === inPh.length - 1 ? 'transparent' : '#F1F5F9' }; });
+    return { on: true, ref: o.id, status: vw.status, pillBg: vw.pillBg, pillFg: vw.pillFg, steps, title, note, icon, iconBg, iconFg,
+      sub, hasSub: !onOrder && inPh.length > 1,
+      you: you && youScr !== scr, youLabel: you ? ACTION[next.screen] : '', youTap: () => { this.prefillForms(o); this.go(youScr); },
+      cont, contLabel: cont ? 'Continue to ' + ph[pIdx + 1].toLowerCase() : '', contTap: () => this.openSellStage(pIdx + 1),
+      demo: demoOk, demoLabel: vw.demoLabel, demoWho: String(o.hold ? 'Mineral Bridge' : (next && ACTOR[next.actor]) || 'Mineral Bridge').toUpperCase(), canChanges: !!vw.canChanges && pIdx === 3,
+      openCur: onOrder && best >= 0 && !closed, openCurLabel: best >= 0 ? 'Open ' + ph[best].toLowerCase() : '', openCurTap: () => this.openSellStage(best),
+      released: o.idx >= ki('payout') };
+  }
+  sellCta(): any { const sx = this.sellStage(this.state.screen); if (sx.you) return sx.youTap(); if (sx.cont) return sx.contTap(); }
+  sellCtaMeta(scr?: any): any {
+    if (this.state.screen !== scr) return {};
+    const sx = this.sellStage(scr); if (!sx.on) return {};
+    const out: AnyObj = sx.you ? { cta: sx.youLabel } : sx.cont ? { cta: sx.contLabel } : {};
+    if (scr === 'payout' && sx.released) out.cta2 = 'View payment advice';
+    return out;
+  }
+  /** Auction journey strip (v6): bid → win → pay → delivery → receipt, for an auction and the order it became. */
+  aucJourney(scr?: any): any {
+    const s = this.state, M = X(); if (!s.ready || !MB4) return { on: false };
+    let a: any = null, o: any = null;
+    if (['auction', 'auctionWon'].includes(scr)) { a = this.aucOf(); if (a && a.orderId) o = s.orders.find((x?: any) => x.id === a.orderId); }
+    else if (['order', 'pay', 'shipment', 'receipt'].includes(scr)) { o = this.order(); if (!o || !o.auction) return { on: false }; a = this.aucOf(o.auction); }
+    else return { on: false };
+    if (!a) return { on: false };
+    const L = ['Bid', 'Win', 'Pay', 'Payment confirmed', 'Dispatched', 'Delivered', 'Receipt confirmed'];
+    let cur: any, lost = false;
+    if (a.status !== 'ended') cur = 0;
+    else if (a.result !== 'won') { lost = true; cur = 1; }
+    else if (!o) cur = 2;
+    else { const nx = M.stages('buy')[o.idx + 1]; cur = !nx ? 7 : ({ paid: 2, payOk: 3, assigned: 4, picked: 4, transit: 4, delivered: 5, receipt: 6, done: 6 } as AnyObj)[nx.key]; if (cur === undefined) cur = 2; }
+    const steps = L.map((l?: any, i?: any) => { const d = i < cur, c = i === cur && !lost, x = lost && i === 1;
+      return { l: x ? 'Not won' : l, n: d ? '✓' : x ? '✕' : String(i + 1), dotBg: d ? '#F2C94C' : c ? '#fff' : 'transparent', dotFg: d || c ? '#1F2A44' : x ? '#FCA5A5' : '#94A3B8', dotBd: d ? '#F2C94C' : c ? '#fff' : x ? '#FCA5A5' : '#475569', fg: d || c ? '#fff' : '#94A3B8', fw: c ? 800 : 600, line: i === L.length - 1 ? 'transparent' : d ? '#F2C94C' : '#475569' }; });
+    const note = lost ? 'Auction closed · another bidder won' : cur === 0 ? (a.status === 'upcoming' ? 'Bidding opens ' + M.fmt(a.startsAt) : 'Bidding is live') : cur === 2 ? 'Pay the winning bid to release the lot' : cur >= 7 ? 'Completed · all records stored' : 'Next: ' + String(L[cur] || '').toLowerCase();
+    return { on: true, ref: a.id + (o ? ' · ' + o.id : ''), steps, note };
+  }
+  /** Values for the sell journey pages: submission & review, inspection, payment to you, sale completed. */
+  sellPageVals(): any {
+    const s = this.state, M = X(), o = this.order();
+    const sx = this.sellStage(s.screen), aj = this.aucJourney(s.screen);
+    if (!o || o.kind !== 'sell' || !o.sell) return { sx, aj, sr: { rows: [], photos: [], docs: [], checks: [] }, si: { rows: [], prep: [] }, po: { rows: [], next: [] }, sd: { rows: [] } };
+    const st = M.stages('sell'), ki = (k?: any) => st.findIndex((x?: any) => x.key === k), at = (k?: any) => o.idx >= ki(k);
+    const d = o.sell, f = o.form || ({} as AnyObj), amount = o.quote ? M.money(o.quote.total) : 'By quotation';
+    const log = o.log || [];
+    const logAt = (re?: any) => { for (let i = log.length - 1; i >= 0; i--) if (re.test(log[i].text)) return M.fmt(log[i].at); return ''; };
+    const rowsOf = (arr?: any) => { const r = arr.filter((x?: any) => x[1]); return r.map(([k, v]: any, i?: any) => ({ k, v: String(v), line: i === r.length - 1 ? 'transparent' : '#F1F5F9' })); };
+    const docs = (d.docs || []).map((n?: any, i?: any) => (typeof n === 'string' && n && !/^[0-9a-f-]{16,}$/i.test(n) ? n : 'Document ' + (i + 1)));
+    const photos = Number(d.photos) || 0;
+    const sr = {
+      title: d.name + ' · ' + d.qty + ' ' + d.unit, at: M.fmt(o.created || (log[0] || ({} as AnyObj)).at || Date.now()),
+      rows: rowsOf([['Mineral', d.name], ['Quantity', d.qty + ' ' + d.unit], ['Quality / grade', d.grade], ['Form', d.form], ['Details', d.details], ['Photos', photos + (photos === 1 ? ' photo' : ' photos')]]),
+      photoCount: String(photos),
+      photos: Array.from({ length: Math.max(1, photos) }, (_, i) => ({ label: 'Photo ' + (i + 1) + ' of ' + d.name, size: ['cover', '160%', '220%', 'cover', '130%', '190%'][i % 6], pos: ['center', '30% 40%', '70% 60%', '20% 80%', '80% 20%', '50% 30%'][i % 6] })),
+      docs: docs.map((n?: any, i?: any) => ({ n, f: 'Attached with your request', line: i === docs.length - 1 ? 'transparent' : '#F1F5F9' })), noDocs: !docs.length,
+      checks: [['Photos are clear and show the full quantity', 'reviewed'], ['Quantity and grade look consistent', 'reviewed'], ['Certificates and documents checked', 'reviewed'], ['Seller KYC verified', 'reviewed'], ['Price quotation prepared', 'quote']].map(([l, k]: any, i?: any, a?: any) => { const ok = at(k); return { l, st: ok ? 'Done' : 'Pending', bg: ok ? '#E2F2E9' : '#F1F5F9', fg: ok ? '#17704C' : '#475569', line: i === a.length - 1 ? 'transparent' : '#F1F5F9' }; })
+    };
+    const si = {
+      status: at('approved') ? 'APPROVED' : at('reportOk') ? 'REPORTS ACCEPTED' : at('sgs') ? 'REPORTS READY' : at('inspect') ? 'INSPECTED' : at('schedule') ? 'SCHEDULED' : at('form') ? 'AWAITING SCHEDULE' : 'NOT STARTED',
+      when: o.insp ? o.insp.when : (f.date ? f.date + ' · ' + f.time + ' (requested)' : 'Date not set yet'),
+      where: f.address || 'Location from your seller confirmation form',
+      rows: rowsOf([['Date & time', o.insp ? o.insp.when : f.date ? f.date + ' · ' + f.time + ' · requested' : 'Not set yet'], ['Location', f.address || 'Not set yet'], ['Inspector', o.company ? o.company.by : at('schedule') ? 'Mineral Bridge inspection team' : 'Assigned when scheduled'], ['Independent tester', 'SGS (third-party laboratory)'], ['Payout method', f.method || 'Not set yet']]),
+      noResults: !o.company && !o.sgs,
+      viewCompany: () => this.openOrderDoc(o, /inspect/i, 'The inspection report is not available yet'),
+      viewSgs: () => this.openOrderDoc(o, /sgs|test|lab|assay/i, 'The test report is not available yet'),
+      prep: [['Have the full quantity weighed and bagged', 'Our inspector checks the weight against your request'], ['Keep your ID and business documents ready', 'The same documents you used for KYC'], ['Allow access for sampling', 'SGS takes a composite sample for testing'], ['Keep the product sealed after inspection', 'Seals are checked again at pickup']].map(([t, b]: any) => ({ t, b }))
+    };
+    const released = at('payout');
+    const po = {
+      status: released ? 'PAYMENT RELEASED' : at('approved') ? 'READY FOR RELEASE' : 'PENDING APPROVAL',
+      amount, sub: released ? 'Sent ' + logAt(/Payment released/) + ' · ' + (f.method || 'Bank transfer') : at('approved') ? 'Approved · Mineral Bridge is releasing your payment' : 'Released after the inspection reports are approved',
+      txn: o.txn || '', hasTxn: !!o.txn, released,
+      rows: rowsOf([['Agreed price', amount], ['Inspection & testing', 'Paid by Mineral Bridge'], ['Net payout', amount], ['Method', f.method || 'Not set yet'], ['Paid to', 'The account in your seller confirmation form'], ['Transaction ref', o.txn || ''], ['Released', released ? logAt(/Payment released/) : '']]),
+      viewAdvice: () => this.openOrderDoc(o, /payout|payment|advice|remit/i, 'The payment advice is not available yet'),
+      next: [['Funds reach your account', 'Usually within 1–2 working days of release'], ['Pickup by the logistics partner', 'The logistics partner collects the sealed product from ' + (f.address || 'your site')], ['Received at the Mineral Bridge vault', 'Checked against the inspection report, then the sale is completed']].map(([t, b]: any, i?: any) => ({ n: String(i + 1), t, b }))
+    };
+    const sd = {
+      title: at('done') ? 'Sale completed' : at('received') ? 'Received by Mineral Bridge' : 'Sale in progress',
+      sub: at('done') ? 'Your ' + String(d.name || '').toLowerCase() + ' was received, checked and paid for. All records are stored in your history.' : at('received') ? 'Mineral Bridge received your product at the vault. Final checks are being recorded.' : 'This page completes once Mineral Bridge receives your product.',
+      rows: rowsOf([['Mineral', d.name + (d.grade ? ' · ' + d.grade : '')], ['Quantity', d.qty + ' ' + d.unit], ['Agreed price', amount], ['Paid', released ? logAt(/Payment released/) : ''], ['Transaction ref', o.txn || ''], ['Delivered to', o.ship ? o.ship.to : ''], ['Vault receipt', o.ship && o.ship.pod ? o.ship.pod : ''], ['Completed', at('done') ? logAt(/^Sale completed|^Completed/) : '']])
+    };
+    return { sx, aj, sr, si, po, sd };
   }
 
   webSummary(scr?: any, m?: any): any {
@@ -167,7 +426,7 @@ export class PlatformController {
       this.setState({ tick: Date.now() });
     }, 1000);
   }
-  stop(): any { clearInterval(this._tick); this._tick = undefined; clearTimeout(this._t); this.remote.stop(); }
+  stop(): any { clearInterval(this._tick); this._tick = undefined; clearTimeout(this._t); clearTimeout(this._hl); this.remote.stop(); }
   flash(t?: any): any { clearTimeout(this._t); this.setState({ toast: t }); this._t = setTimeout(() => this.setState({ toast: '' }), 2400); }
   go(s?: any, extra?: any): any { this.setState((x?: any) => Object.assign({ stack: [...x.stack, x.screen], screen: s }, extra || ({} as AnyObj))); this.top(); }
   resume(ret?: any): any {
@@ -242,7 +501,7 @@ export class PlatformController {
     const you = needVar || (!!next && next.actor === 'you' && !rej && !holdBlocks);
     const holdText = o.hold ? (o.holdNote ? (HOLD[o.hold] || 'On hold').split(' · ')[0] + ' · ' + o.holdNote : HOLD[o.hold] || 'On hold') : '';
     const status = rej ? (cx ? 'Cancelled' : 'Rejected') : refunded ? 'Refunded' : done ? 'Completed' : needVar ? 'Action needed' : o.hold ? (HOLD[o.hold] || 'On hold').split(' · ')[0] : you ? 'Action needed' : 'Waiting on ' + ACTOR[next.actor];
-    const tone = cx ? ['#F1EFE9', '#3A3940'] : rej ? ['#FDECEA', '#B42318'] : refunded ? ['#EDE9F7', '#4B3B8F'] : done ? ['#E2F2E9', '#17704C'] : you || o.hold ? ['#FBF3E4', '#A1620B'] : ['#F1EFE9', '#3A3940'];
+    const tone = cx ? ['#F1F5F9', '#334155'] : rej ? ['#FDECEA', '#B42318'] : refunded ? ['#EDE9F7', '#4B3B8F'] : done ? ['#E2F2E9', '#17704C'] : you || o.hold ? ['#FEF7E0', '#8A5A06'] : ['#F1F5F9', '#334155'];
     const value = o.quote ? (o.quote.est ? 'From ' : '') + M.money(o.quote.total) : 'By quotation';
     const p0 = o.kind === 'sell' && o.sell ? M.PRODUCTS.find((p?: any) => p.mineral === o.sell.mineral) : M.product((o.items[0] || ({} as AnyObj)).pid);
     const lastAt = o.log.length ? o.log[o.log.length - 1].at : o.created;
@@ -255,7 +514,7 @@ export class PlatformController {
       canReject: DEV_TOOLS && !rej && !!next && next.key === 'accepted', canDeclineRefund: DEV_TOOLS && o.hold === 'refund' && ['requested', 'review'].includes((o.refund || ({} as AnyObj)).status), canChanges: DEV_TOOLS && !rej && !!next && next.key === 'formOk' && !o.hold,
       pct: Math.round((o.idx + 1) / st.length * 100) + '%', step: 'STAGE ' + (o.idx + 1) + ' OF ' + st.length, value,
       qtyLine: o.kind === 'sell' && o.sell ? o.sell.qty + ' ' + o.sell.unit + (o.sell.grade ? ' · ' + o.sell.grade : '') : o.items.filter((it?: any) => it.qty > 0).map((it?: any) => it.qty + ' ' + M.unitOfItem(it)).join(' + '),
-      img: IMG(p0 ? p0.img : 'cat-precious'),
+      img: p0 ? PIMG(p0) : IMG('cat-precious'),
       updated: M.fmt(lastAt), done, rej
     };
   }
@@ -283,7 +542,7 @@ export class PlatformController {
       contract: { header: 1, canBack: 1, title: 'E-contract', cta: 'Sign e-contract' },
       payInsp: { header: 1, canBack: 1, title: 'Payment details', cta: 'Submit details' },
       sellConfirm: { header: 1, canBack: 1, title: 'Seller confirmation', cta: 'Submit form' },
-      report: { header: 1, canBack: 1, title: 'Inspection reports', cta: 'Accept reports', cta2: 'Request clarification', cta2Fg: '#A1620B' },
+      report: { header: 1, canBack: 1, title: 'Inspection reports', cta: 'Accept reports', cta2: 'Request clarification', cta2Fg: '#8A5A06' },
       pay: { header: 1, canBack: 1, title: 'Make payment', cta: s.paying ? 'Processing…' : s.pmethod === 'Bitcoin' ? 'I have sent the Bitcoin' : (s.pmethod === 'Bank transfer' ? 'I have made the transfer' : 'Pay with ' + (s.pmethod || 'UPI')), ctaOpacity: s.paying ? .6 : 1 },
       refund: { header: 1, canBack: 1, title: 'Request a refund', cta: 'Submit refund request' },
       cancel: this.cancelMeta(),
@@ -292,7 +551,7 @@ export class PlatformController {
       chat: { header: 1, canBack: 1, title: 'Chat with Mineral Bridge' },
       shipment: { header: 1, canBack: 1, title: 'Shipment tracking' },
       sellCats: { tabs: 'sell', header: 1, title: 'Sell minerals' },
-      sellForm: { header: 1, canBack: 1, title: 'Sell ' + M.mineralName(s.draft.mineral || 'gold'), cta: s.placing ? 'Submitting…' : 'Submit sell request', cta2: 'Save draft', cta2Fg: '#121214' },
+      sellForm: { header: 1, canBack: 1, title: 'Sell ' + M.mineralName(s.draft.mineral || 'gold'), cta: s.placing ? 'Submitting…' : 'Submit sell request', cta2: 'Save draft', cta2Fg: '#1F2A44' },
       sellDone: { cta: 'Track request', cta2: 'Back to home' },
       profile: { tabs: 'profile', header: 1, title: 'Profile' },
       editProfile: { header: 1, canBack: 1, title: 'Edit profile', cta: 'Save changes' },
@@ -307,21 +566,26 @@ export class PlatformController {
       auction: Object.assign({ header: 1, canBack: 1, title: 'Auction' }, this.aucCta()),
       auctionWon: { cta: this.aucWonCta(), cta2: 'Back to auctions' },
       doc: { header: 1, canBack: 1, title: 'Document', cta: 'Download', cta2: 'Share' },
-      priceVar: this.varMeta()
+      priceVar: this.varMeta(),
+      sellReview: Object.assign({ header: 1, canBack: 1, title: 'Submission & review' }, this.sellCtaMeta('sellReview')),
+      sellInspect: Object.assign({ header: 1, canBack: 1, title: 'Inspection by Mineral Bridge' }, this.sellCtaMeta('sellInspect')),
+      payout: Object.assign({ header: 1, canBack: 1, title: 'Payment to you' }, this.sellCtaMeta('payout')),
+      saleDone: { header: 1, canBack: 1, title: 'Sale completed', cta: 'Sell another mineral', cta2: 'View sell requests' }
     };
-    const m = Object.assign({ ctaOpacity: 1, cta2Fg: '#6B6A70' }, META[s.screen] || ({} as AnyObj));
+    if (this.sellLocked(s.screen) && META[s.screen]) META[s.screen] = Object.assign({}, META[s.screen], { cta: '', cta2: '' });
+    const m = Object.assign({ ctaOpacity: 1, cta2Fg: '#5B6B82' }, META[s.screen] || ({} as AnyObj));
     if (m.tabs === undefined) m.tabs = ''; if (s.placing || s.authBusy || s.kycBusy || s.contactBusy || s.varBusy) m.ctaOpacity = .6;
     const is: AnyObj = {}; Object.keys(META).forEach((k?: any) => is[k] = s.screen === k);
     const TAB = [['home', 'Home', 'M3 10.5L12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z'], ['buy', 'Buy', 'M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0'], ['sell', 'Sell', 'M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6'], ['orders', 'Orders', 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 5a2 2 0 0 0 2 2h2a2 2 0 0 0 2-2M9 5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2M9 12h6M9 16h4'], ['profile', 'Profile', 'M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2M12 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8']];
     const tabScreen: AnyObj = { home: 'home', buy: 'cats', sell: 'sellCats', orders: 'orders', profile: 'profile' };
-    const tabs = TAB.map(([id, label, icon]: any) => ({ label, icon, bg: m.tabs === id ? '#D9B456' : 'transparent', fg: m.tabs === id ? '#121214' : '#9C9AA0', tap: () => this.jump(tabScreen[id]) }));
+    const tabs = TAB.map(([id, label, icon]: any) => ({ label, icon, bg: m.tabs === id ? '#F2C94C' : 'transparent', fg: m.tabs === id ? '#1F2A44' : '#94A3B8', tap: () => this.jump(tabScreen[id]) }));
     const RAIL = [['ONBOARDING', [['welcome', 'Welcome'], ['auth', 'Sign in / sign up'], ['otp', 'OTP verification'], ['regType', 'Buyer / seller type'], ['regDetails', 'Your details'], ['kyc', 'KYC'], ['kycDone', 'KYC submitted']]],
       ['BUY', [['home', 'Home'], ['cats', 'Categories'], ['minerals', 'Subcategories'], ['lots', 'Product lots'], ['detail', 'Product details'], ['cart', 'Cart'], ['checkout', 'Checkout'], ['placed', 'Order placed']]],
       ['ORDER TRACKING', [['orders', 'Orders'], ['order', 'Order tracking'], ['quote', 'Quotation'], ['contract', 'E-contract'], ['pay', 'Payment'], ['receipt', 'Receipt confirmation'], ['shipment', 'Shipment tracking'], ['chat', 'Chat']]],
-      ['SELL', [['sellCats', 'Select mineral'], ['sellForm', 'Mineral details'], ['sellDone', 'Request submitted'], ['sellTrack', 'Sell tracking'], ['sellConfirm', 'Seller confirmation form'], ['report', 'Inspection reports']]],
+      ['SELL', [['sellCats', 'Select mineral'], ['sellForm', 'Mineral details'], ['sellDone', 'Request submitted'], ['sellTrack', 'Sell tracking'], ['sellReview', 'Submission & review'], ['sellConfirm', 'Seller confirmation form'], ['sellInspect', 'Inspection by Mineral Bridge'], ['report', 'Inspection reports'], ['payout', 'Payment to you'], ['sellShip', 'Transportation'], ['saleDone', 'Sale completed']]],
       ['AUCTIONS', [['auctions', 'Auctions'], ['auction', 'Auction & bidding'], ['auctionWon', 'Auction won']]],
       ['ACCOUNT', [['profile', 'Profile'], ['editProfile', 'Edit profile'], ['kycStatus', 'KYC & documents'], ['notifs', 'Notifications'], ['prefs', 'Notification channels'], ['help', 'Help & support']]]];
-    const rail = RAIL.map(([h, items]: any) => ({ h, items: items.map(([id, label]: any) => { const scr = id === 'sellTrack' ? 'order' : id; const on = s.screen === scr && (id !== 'sellTrack' || (this.order() || ({} as AnyObj)).kind === 'sell') && (id !== 'order' || (this.order() || ({} as AnyObj)).kind !== 'sell'); return { label, bg: on ? '#121214' : 'transparent', fg: on ? '#F4F2ED' : '#3A3940', weight: on ? 600 : 500, tap: () => this.railJump(id) }; }) }));
+    const rail = RAIL.map(([h, items]: any) => ({ h, items: items.map(([id, label]: any) => { const scr = id === 'sellTrack' ? 'order' : id === 'sellShip' ? 'shipment' : id; const on = s.screen === scr && (id !== 'sellTrack' || (this.order() || ({} as AnyObj)).kind === 'sell') && (id !== 'order' || (this.order() || ({} as AnyObj)).kind !== 'sell'); return { label, bg: on ? '#1F2A44' : 'transparent', fg: on ? '#F8FAFC' : '#334155', weight: on ? 600 : 500, tap: () => this.railJump(id) }; }) }));
 
     const o = this.order() || s.orders[0], ov = o ? this.view(o) : {};
     const prod = M.product(s.pid) || EMPTY_PRODUCT;
@@ -330,12 +594,15 @@ export class PlatformController {
       devTools: DEV_TOOLS, devOtp: IS_DEV ? s.devOtp : '',
       pv: (() => { const p = pendingVariation(o); if (!p) return null; const up = p.to >= p.from; return { from: M.money(p.from), to: M.money(p.to), delta: (up ? '+' : '−') + M.money(Math.abs(p.to - p.from)), up, reason: p.reason, note: p.note || '', busy: !!s.varBusy, err: s.varErr || '', noteVal: s.varNote || '', setNote: (e?: any) => this.setState({ varNote: e.target.value, varErr: '' }), accept: () => this.decideVariation('accept'), reject: () => this.decideVariation('reject') }; })(),
       resetDemo: () => { if (DEV_TOOLS) void this.task(this.remote.signOutLocal('Local state reset')); }
-    }, this.authVals(), this.buyVals(prod), this.orderVals(o, ov), this.sellVals(), this.accountVals(), this.contactVals(), this.supportVals(), this.auctionVals(), this.refundVals(o), this.docVals(), this.cancelVals(o));
+    }, this.authVals(), this.buyVals(prod), this.orderVals(o, ov), this.sellVals(), this.accountVals(), this.contactVals(), this.supportVals(), this.auctionVals(), this.refundVals(o), this.docVals(), this.cancelVals(o), this.sellPageVals());
   }
   railJump(id?: any): any {
     if (!DEV_TOOLS) return;
-    const s = this.state, sc = id === 'sellTrack' ? 'order' : id, o = s.orders.find((x?: any) => (id === 'sellTrack' ? x.kind === 'sell' : true));
+    // The v6 sell-journey pages open on this account's first sell request (the design seeds a demo one; this app only shows real orders).
+    const SJ = ['sellTrack', 'sellReview', 'sellInspect', 'payout', 'sellShip', 'saleDone'];
+    const s = this.state, sc = id === 'sellTrack' ? 'order' : id === 'sellShip' ? 'shipment' : id, o = s.orders.find((x?: any) => (SJ.includes(id) ? x.kind === 'sell' : true));
     const extra: AnyObj = {};
+    if (SJ.includes(id) && id !== 'sellTrack') { if (!o) return this.flash('No sell request yet'); extra.oid = o.id; this.jump(sc, extra); this.setState({ stack: ['orders', 'order'] }); return; }
     if (o && ['order', 'quote', 'contract', 'payInsp', 'report', 'pay', 'receipt', 'chat', 'sellConfirm', 'shipment'].includes(sc)) extra.oid = o.id;
     if (sc === 'checkout') setTimeout(() => this.prefillShip(), 0);
     if (sc === 'editProfile' && s.user) { extra.edit = { name: s.user.name, business: s.user.business, email: s.user.email || '', phone: s.user.phone || '', country: s.user.country || '' }; extra.editErr = {}; }
@@ -425,7 +692,8 @@ export class PlatformController {
       cart: () => { if (!s.cart.length) return; if (!this.gate('checkout')) return; this.prefillShip(); this.go('checkout'); },
       checkout: () => this.placeOrder(),
       placed: () => { this.setState({ stack: ['orders'], screen: 'order' }); this.top(); },
-      sellDone: () => { this.setState({ stack: ['orders'], screen: 'order' }); this.top(); },
+      sellDone: () => { this.setState({ stack: ['orders', 'order'], screen: 'sellReview' }); this.top(); },
+      sellReview: () => this.sellCta(), sellInspect: () => this.sellCta(), payout: () => this.sellCta(), saleDone: () => this.jump('sellCats'),
       quote: () => { if (!this.stepOpen()) return; bg(this.remote.acceptQuote()); },
       contract: () => {
         if (!this.stepOpen()) return;
@@ -493,6 +761,8 @@ export class PlatformController {
         bg(this.remote.disputeReceipt());
       },
       sellForm: () => { this.setState({ hasDraft: true }); this.flash('Draft saved'); },
+      payout: () => { const sx = this.sellPageVals(); if (sx.po.viewAdvice) sx.po.viewAdvice(); },
+      saleDone: () => { this.setState({ otab: 'sell' }); this.jump('orders'); },
       priceVar: () => this.decideVariation('reject')
     };
     (H[sc] || (() => {}))();
@@ -500,11 +770,11 @@ export class PlatformController {
   sheetVals(): any {
     const s = this.state, k = s.sheet, close = () => this.setState({ sheet: '' });
     const S: AnyObj = {
-      kycPending: ['Verification still under review', 'Your KYC (' + ((s.user || ({} as AnyObj)).kycRef || '') + ') is being reviewed. You can browse, but buying and selling open once it is approved.', 'View status', '#121214', () => { close(); this.go('kycStatus'); }],
+      kycPending: ['Verification still under review', 'Your KYC (' + ((s.user || ({} as AnyObj)).kycRef || '') + ') is being reviewed. You can browse, but buying and selling open once it is approved.', 'View status', '#1F2A44', () => { close(); this.go('kycStatus'); }],
       declineQuote: ['Decline this quotation?', 'Mineral Bridge will be told and can send a revised quotation. Your order stays open.', 'Decline quotation', '#B42318', () => { close(); void this.task(this.remote.declineQuote()); }],
       rejectVariation: ['Reject this price?', 'Mineral Bridge will be told and the order is paused while they review it with you. Your note is shared with them.', 'Reject price', '#B42318', () => { close(); void this.task(this.remote.decideVariation('reject', this.state.varNote)); }],
-      needSeller: ['Add selling to your account', 'Your account is set up for buying only. Choose a seller type to sell to Mineral Bridge. Your draft is kept.', 'Add seller type', '#121214', () => { close(); this.setState((x?: any) => ({ reg: Object.assign({}, x.reg, { role: 'both', buyerType: x.user.buyerType || '', sellerType: '' }), regErr: '' })); this.go('bizType'); }],
-      needBuyer: ['Add buying to your account', 'Your account is set up for selling only. Choose a buyer type to place orders. Your cart is kept.', 'Add buyer type', '#121214', () => { close(); this.setState((x?: any) => ({ reg: Object.assign({}, x.reg, { role: 'both', buyerType: '', sellerType: x.user.sellerType || '' }), regErr: '' })); this.go('bizType'); }],
+      needSeller: ['Add selling to your account', 'Your account is set up for buying only. Choose a seller type to sell to Mineral Bridge. Your draft is kept.', 'Add seller type', '#1F2A44', () => { close(); this.setState((x?: any) => ({ reg: Object.assign({}, x.reg, { role: 'both', buyerType: x.user.buyerType || '', sellerType: '' }), regErr: '' })); this.go('bizType'); }],
+      needBuyer: ['Add buying to your account', 'Your account is set up for selling only. Choose a buyer type to place orders. Your cart is kept.', 'Add buyer type', '#1F2A44', () => { close(); this.setState((x?: any) => ({ reg: Object.assign({}, x.reg, { role: 'both', buyerType: '', sellerType: x.user.sellerType || '' }), regErr: '' })); this.go('bizType'); }],
       logout: ['Log out?', 'You will need a verification code to sign in again.', 'Log out', '#B42318', () => { close(); this.jump('welcome', { returnTo: '' }); void this.task(this.remote.logout()); }],
       discardDraft: ['Discard this draft?', 'Photos and details you entered will be removed.', 'Discard draft', '#B42318', () => { close(); this.setState((x?: any) => ({ hasDraft: false, draft: emptyDraft(), uploads: { ...x.uploads, sellPhotos: [], sellDocs: [] } })); this.flash('Draft discarded'); }]
     };
@@ -549,8 +819,7 @@ export class PlatformController {
     const s = this.state, M = X(), u = s.user, go = (x?: any, e?: any) => () => this.go(x, e);
     const q = s.search.trim().toLowerCase();
     const lotLine = (x?: any) => lotAvailabilityLabel(x);
-    const cardOff = (x?: any) => productIsSoldOut(x);
-    const card = (x?: any) => ({ id: x.id, name: x.name, form: x.form, img: IMG(x.img), qty: lotLine(x), grade: x.lab ? x.grade : 'Test report on request', lab: x.lab || 'No third-party report yet', origin: x.origin, off: cardOff(x), opacity: cardOff(x) ? .55 : 1, hasLabTag: !!x.lab && !cardOff(x), labBg: x.lab ? '#E2F2E9' : '#F1EFE9', labFg: x.lab ? '#17704C' : '#6B6A70', tap: () => this.go('detail', { pid: x.id, qty: String(x.min), qtyErr: '' }) });
+    const card = (x?: any) => this.lotCard(x);
     let lots = M.PRODUCTS.filter((x?: any) => x.mineral === s.mineral);
     const forms = ['All', ...new Set(lots.map((x?: any) => x.form))];
     if (s.fform !== 'All') lots = lots.filter((x?: any) => x.form === s.fform);
@@ -579,25 +848,25 @@ export class PlatformController {
       lots: lots.map(card), lotCount: lots.length + (lots.length === 1 ? ' lot' : ' lots'), noLots: !lots.length,
       lotsEmptyText: M.PRODUCTS.some((x?: any) => x.mineral === s.mineral) ? 'No lots match these filters.' : 'No ' + M.mineralName(s.mineral).toLowerCase() + ' lots are listed yet.',
       resetFilters: () => this.setState({ fform: 'All', labOnly: false, search: '', sort: 'featured' }),
-      formChips: forms.map((f?: any) => ({ label: f, bg: s.fform === f ? '#121214' : '#fff', fg: s.fform === f ? '#F4F2ED' : '#121214', border: s.fform === f ? '#121214' : '#E4E2DB', tap: () => this.setState({ fform: f }) })),
-      labChipBg: s.labOnly ? '#121214' : '#fff', labChipFg: s.labOnly ? '#F4F2ED' : '#121214', toggleLab: () => this.setState({ labOnly: !s.labOnly }),
+      formChips: forms.map((f?: any) => ({ label: f, bg: s.fform === f ? '#1F2A44' : '#fff', fg: s.fform === f ? '#F8FAFC' : '#1F2A44', border: s.fform === f ? '#1F2A44' : '#E2E8F0', tap: () => this.setState({ fform: f }) })),
+      labChipBg: s.labOnly ? '#1F2A44' : '#fff', labChipFg: s.labOnly ? '#F8FAFC' : '#1F2A44', toggleLab: () => this.setState({ labOnly: !s.labOnly }),
       sorts: SORTS.map(([id, l]: any) => ({ label: l, on: s.sort === id, weight: s.sort === id ? 600 : 400, tap: () => this.setState({ sort: id, sortOpen: false }) })),
       sortLabel: (SORTS.find((x?: any) => x[0] === s.sort) || SORTS[0])[1], sortOpen: !!s.sortOpen, sortChevron: s.sortOpen ? 'rotate(180deg)' : 'none',
       toggleSort: () => this.setState({ sortOpen: !s.sortOpen }),
       gridCols: s.cols === 3 ? 'repeat(3,minmax(0,1fr))' : 'repeat(2,minmax(0,1fr))', gridGap: s.cols === 3 ? '8px' : '10px', cardPad: s.cols === 3 ? '8px 9px 10px' : '10px 11px 12px', nameSize: s.cols === 3 ? '12.5px' : '14px', showGridMeta: s.cols !== 3,
-      colOpts: [[2, '2 columns', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'], [3, '3 columns', 'M3 4h5v5H3zM9.5 4h5v5h-5zM16 4h5v5h-5zM3 13h5v5H3zM9.5 13h5v5h-5zM16 13h5v5h-5z']].map(([n, label, icon]: any) => ({ label, icon, bg: (s.cols || 2) === n ? '#fff' : 'transparent', fg: (s.cols || 2) === n ? '#121214' : '#8B8A90', tap: () => this.setState({ cols: n }) })),
+      colOpts: [[2, '2 columns', 'M4 4h7v7H4zM13 4h7v7h-7zM4 13h7v7H4zM13 13h7v7h-7z'], [3, '3 columns', 'M3 4h5v5H3zM9.5 4h5v5h-5zM16 4h5v5h-5zM3 13h5v5H3zM9.5 13h5v5h-5zM16 13h5v5h-5z']].map(([n, label, icon]: any) => ({ label, icon, bg: (s.cols || 2) === n ? '#fff' : 'transparent', fg: (s.cols || 2) === n ? '#1F2A44' : '#5B6B82', tap: () => this.setState({ cols: n }) })),
       lotNum: String(lots.length), lotWord: lots.length === 1 ? 'lot' : 'lots',
-      p: { id: p.id, name: p.name, form: p.form, mineral: M.mineralName(p.mineral), img: IMG(p.img), qty: lotLine(p), unit: p.unit, min: p.min + ' ' + p.unit, origin: p.origin, hasLab: !!p.lab, noLab: !p.lab, grade: p.grade, lab: p.lab, cert: p.cert, off: productIsSoldOut(p), on: !productIsSoldOut(p), onRequest: productIsAvailableOnRequest(p) },
+      p: { id: p.id, name: p.name, form: p.form, mineral: M.mineralName(p.mineral), img: PIMG(p), qty: lotLine(p), unit: p.unit, min: p.min + ' ' + p.unit, origin: p.origin, hasLab: !!p.lab, noLab: !p.lab, grade: p.grade, lab: p.lab, cert: p.cert, off: productIsSoldOut(p), on: !productIsSoldOut(p), onRequest: productIsAvailableOnRequest(p) },
       pDocs: productHasLotDocuments(p) ? [['Test report', p.lab + ' · ' + p.cert + '-TR.pdf'], ['Certificate of analysis', p.cert + '.pdf'], ['Origin declaration', 'Mine of origin · ' + p.origin.split(' · ')[0]]].map(([n, f]: any, i: any) => { const t = ['lotReport', 'lotCoa', 'lotOrigin'][i] as string; return { n, f, tap: () => this.openProductDoc(p, PRODUCT_DOC[t] as ProductDocumentType, t, false), dl: () => this.openProductDoc(p, PRODUCT_DOC[t] as ProductDocumentType, t, true) }; }) : [],
       qty: s.qty, setQty: (e?: any) => this.setState({ qty: e.target.value.replace(/[^\d.]/g, ''), qtyErr: '' }), qtyErr: s.qtyErr, inCartNote: inCart ? 'In your cart: ' + (inCart.uIn ? inCart.qIn + ' ' + inCart.uIn : inCart.qty + ' ' + p.unit) : '',
       ...(() => { const pu = p.unit, u = this.unitOf(p), can = !!UF[pu], nf = (v?: any) => (+v.toFixed(6)).toLocaleString('en-US', { maximumFractionDigits: 6 }), q = parseFloat(s.qty);
         return { unitPick: can, noUnitPick: !can,
-          qtyUnits: can ? ['g', 'kg', 't'].map((k?: any) => ({ label: UNAME[k], short: k, bg: u === k ? '#121214' : 'transparent', fg: u === k ? '#F4F2ED' : '#6B6A70', tap: () => { if (k === u) return; const v = parseFloat(s.qty); this.setState({ qu: { pid: p.id, u: k }, qty: v > 0 ? String(this.conv(v, u, k)) : s.qty, qtyErr: '' }); } })) : [],
+          qtyUnits: can ? ['g', 'kg', 't'].map((k?: any) => ({ label: UNAME[k], short: k, bg: u === k ? '#1F2A44' : 'transparent', fg: u === k ? '#F8FAFC' : '#5B6B82', tap: () => { if (k === u) return; const v = parseFloat(s.qty); this.setState({ qu: { pid: p.id, u: k }, qty: v > 0 ? String(this.conv(v, u, k)) : s.qty, qtyErr: '' }); } })) : [],
           qtyEquiv: can && q > 0 ? '= ' + ['g', 'kg', 't'].filter((k?: any) => k !== u).map((k?: any) => nf(this.conv(q, u, k)) + ' ' + k).join(' = ') : '',
           minShown: can ? nf(this.conv(p.min, pu, u)) + ' ' + u : p.min + ' ' + pu, maxShown: can ? nf(this.conv(p.avail, pu, u)) + ' ' + u : p.avail + ' ' + pu }; })(),
-      cart: s.cart.map((c?: any) => { const x = M.product(c.pid) || ({} as AnyObj); return { name: c.name || x.name || c.pid, id: c.pid, issue: c.issue || '', img: IMG(x.img), qty: c.uIn && c.uIn !== M.unitOfItem(c) ? c.qIn + ' ' + c.uIn + ' (' + (+c.qty.toFixed(4)) + ' ' + M.unitOfItem(c) + ')' : c.qty + ' ' + M.unitOfItem(c), grade: x.lab ? x.grade : 'Test report on request', edit: () => this.go('detail', { pid: c.pid, qty: String(c.qIn || c.qty), qu: { pid: c.pid, u: c.uIn || M.unitOfItem(c) } }), remove: () => { void this.task(this.remote.cartRemove(c.pid)); } }; }),
+      cart: s.cart.map((c?: any) => { const x = M.product(c.pid) || ({} as AnyObj); return { name: c.name || x.name || c.pid, id: c.pid, issue: c.issue || '', img: PIMG(x), qty: c.uIn && c.uIn !== M.unitOfItem(c) ? c.qIn + ' ' + c.uIn + ' (' + (+c.qty.toFixed(4)) + ' ' + M.unitOfItem(c) + ')' : c.qty + ' ' + M.unitOfItem(c), grade: x.lab ? x.grade : 'Test report on request', edit: () => this.go('detail', { pid: c.pid, qty: String(c.qIn || c.qty), qu: { pid: c.pid, u: c.uIn || M.unitOfItem(c) } }), remove: () => { void this.task(this.remote.cartRemove(c.pid)); } }; }),
       cartEmpty: !s.cart.length, hasCart: s.cart.length > 0,
-      ship: s.ship, shipErr: s.shipErr, shipFields: [['org', 'COMPANY / RECEIVER'], ['street', 'STREET ADDRESS'], ['city', 'CITY'], ['country', 'COUNTRY'], ['contact', 'CONTACT PERSON'], ['mobile', 'MOBILE']].map(([k, l]: any) => ({ l, v: s.ship[k] || '', err: (s.shipErr || ({} as AnyObj))[k] || '', border: (s.shipErr || ({} as AnyObj))[k] ? '#B42318' : '#E4E2DB', set: (e?: any) => this.setState((x?: any) => ({ ship: Object.assign({}, x.ship, { [k]: e.target.value }), shipErr: Object.assign({}, x.shipErr, { [k]: '' }) })) })),
+      ship: s.ship, shipErr: s.shipErr, shipFields: [['org', 'COMPANY / RECEIVER'], ['street', 'STREET ADDRESS'], ['city', 'CITY'], ['country', 'COUNTRY'], ['contact', 'CONTACT PERSON'], ['mobile', 'MOBILE']].map(([k, l]: any) => ({ l, v: s.ship[k] || '', err: (s.shipErr || ({} as AnyObj))[k] || '', border: (s.shipErr || ({} as AnyObj))[k] ? '#B42318' : '#E2E8F0', set: (e?: any) => this.setState((x?: any) => ({ ship: Object.assign({}, x.ship, { [k]: e.target.value }), shipErr: Object.assign({}, x.shipErr, { [k]: '' }) })) })),
       buyerLine: u ? u.name + ' · ' + u.business : '', buyerContact: u ? (u.phone || u.email) : '',
       placedOrder: (s.orders.find((o?: any) => o.id === s.oid) || ({} as AnyObj)).id || ''
     };
@@ -628,7 +897,7 @@ export class PlatformController {
   orderListVals(): any {
     const s = this.state;
     return {
-      orderTabs: [['buy', 'Buying'], ['sell', 'Selling'], ['auction', 'Auctions']].map(([id, l]: any) => ({ label: l + ' · ' + (id === 'auction' ? this.myAucs().length : s.orders.filter((x?: any) => x.kind === id && !x.auction).length), bg: s.otab === id ? '#121214' : 'transparent', fg: s.otab === id ? '#F4F2ED' : '#6B6A70', tap: () => this.setState({ otab: id }) })),
+      orderTabs: [['buy', 'Buying'], ['sell', 'Selling'], ['auction', 'Auctions']].map(([id, l]: any) => ({ label: l + ' · ' + (id === 'auction' ? this.myAucs().length : s.orders.filter((x?: any) => x.kind === id && !x.auction).length), bg: s.otab === id ? '#1F2A44' : 'transparent', fg: s.otab === id ? '#F8FAFC' : '#5B6B82', tap: () => this.setState({ otab: id }) })),
       orderList: s.otab === 'auction' ? this.myAucs().map((a?: any) => this.aucOrderCard(a)) : s.orders.filter((x?: any) => x.kind === s.otab && !x.auction).map((x?: any) => Object.assign(this.view(x), { tap: () => this.go('order', { oid: x.id }) })),
       noOrders: s.otab === 'auction' ? !this.myAucs().length : !s.orders.some((x?: any) => x.kind === s.otab && !x.auction), ordersEmptyCta: s.otab === 'buy' ? 'Browse minerals' : s.otab === 'auction' ? 'Browse auctions' : 'Sell a mineral', ordersEmptyTap: () => s.otab === 'auction' ? this.go('auctions', { atab: 'live' }) : this.jump(s.otab === 'buy' ? 'cats' : 'sellCats'),
       ordersLoading: !!s.ordersLoading
@@ -642,11 +911,11 @@ export class PlatformController {
     const s = this.state, M = X(), u = s.user || EMPTY_USER;
     if (!o) return this.orderListVals();
     const st = M.stages(o.kind), ph = M.phases(o.kind), all = !st[o.idx + 1], cur = all ? st[o.idx].phase : st[o.idx + 1].phase;
-    const chips = (list?: any, val?: any, set?: any) => list.map((v?: any) => ({ label: v, bg: val === v ? '#121214' : '#fff', fg: val === v ? '#F4F2ED' : '#121214', border: val === v ? '#121214' : '#E4E2DB', tap: () => set(v) }));
+    const chips = (list?: any, val?: any, set?: any) => list.map((v?: any) => ({ label: v, bg: val === v ? '#1F2A44' : '#fff', fg: val === v ? '#F8FAFC' : '#1F2A44', border: val === v ? '#1F2A44' : '#E2E8F0', tap: () => set(v) }));
     const days = Array.from({ length: 7 }, (_?: any, i?: any) => M.day(Date.now() + (i + 2) * 864e5));
     const pf = s.pf, setPf = (p?: any) => this.setState((x?: any) => ({ pf: Object.assign({}, x.pf, p), pfErr: {} })), pe = s.pfErr || ({} as AnyObj);
     const sc = s.sc, setSc = (p?: any) => this.setState((x?: any) => ({ sc: Object.assign({}, x.sc, p), scErr: {} })), se = s.scErr || ({} as AnyObj);
-    const fld = (obj?: any, err?: any, set?: any, k?: any, l?: any, ph2?: any) => ({ l, ph: ph2 || '', v: obj[k] || '', err: err[k] || '', border: err[k] ? '#B42318' : '#E4E2DB', set: (e?: any) => set({ [k]: e.target.value }) });
+    const fld = (obj?: any, err?: any, set?: any, k?: any, l?: any, ph2?: any) => ({ l, ph: ph2 || '', v: obj[k] || '', err: err[k] || '', border: err[k] ? '#B42318' : '#E2E8F0', set: (e?: any) => set({ [k]: e.target.value }) });
     const ct = s.contacts, wa = ct ? String(ct.whatsapp || '').replace(/\D/g, '') : '';
     const contact = [['Phone', ct ? 'tel:' + ct.phone : ''], ['SMS', ct ? 'sms:' + ct.phone : ''], ['Email', ct ? 'mailto:' + ct.email : ''], ['WhatsApp', wa ? 'https://wa.me/' + wa : ''], ['Chat', '']].map(([l, href]: any) => ({ l, tap: () => { if (l === 'Chat') return this.go('chat'); if (!href) return this.flash('Contact details are loading. Try again in a moment.'); window.open(href, l === 'WhatsApp' ? '_blank' : '_self'); } }));
     const chat = (s.chat[o.id] || []).map((c?: any) => ({ text: c.text, at: M.fmt(c.at), me: c.me, them: !c.me, action: c.action === 'refund' ? (this.refundable(o) ? 'Open refund form' : '') : c.action === 'trackRefund' ? 'View refund status' : '', act: () => c.action === 'refund' ? this.openRefund(o, { note: c.ctx || '' }) : this.go('order', { oid: o.id }) }));
@@ -673,16 +942,16 @@ export class PlatformController {
             : acct;
     return Object.assign({ ov }, {
       ...this.orderListVals(),
-      phases: ph.map((l?: any, i?: any) => { const d = all || i < cur, a = !all && i === cur; return { l, n: String(i + 1), done: d, active: a, pending: !d && !a, dot: d ? '#121214' : a ? '#D9B456' : '#fff', dotBorder: d ? '#121214' : a ? '#D9B456' : '#D5D3CC', fg: !d && !a ? '#8B8A90' : '#121214', line: i === ph.length - 1 ? 'transparent' : d ? '#121214' : '#E4E2DB', tag: d ? 'Done' : a ? 'Now' : '' }; }),
-      audit: [...o.log].reverse().map((l?: any, i?: any, arr?: any) => ({ who: l.who, text: l.text, note: l.note, at: M.fmt(l.at), line: i === arr.length - 1 ? 'transparent' : '#EFEDE7', youBg: l.who === 'You' ? '#121214' : '#F1EFE9', youFg: l.who === 'You' ? '#D9B456' : '#3A3940', ini: l.who === 'You' ? 'YOU' : l.who.startsWith('SGS') ? 'SGS' : l.who.startsWith('Sahel') ? 'LP' : 'MB' })),
+      phases: ph.map((l?: any, i?: any) => { const d = all || i < cur, a = !all && i === cur; return { l, n: String(i + 1), done: d, active: a, pending: !d && !a, dot: d ? '#1F2A44' : a ? '#F2C94C' : '#fff', dotBorder: d ? '#1F2A44' : a ? '#F2C94C' : '#CBD5E1', fg: !d && !a ? '#5B6B82' : '#1F2A44', line: i === ph.length - 1 ? 'transparent' : d ? '#1F2A44' : '#E2E8F0', tag: d ? 'Done' : a ? 'Now' : '' }; }),
+      audit: [...o.log].reverse().map((l?: any, i?: any, arr?: any) => ({ who: l.who, text: l.text, note: l.note, at: M.fmt(l.at), line: i === arr.length - 1 ? 'transparent' : '#F1F5F9', youBg: l.who === 'You' ? '#1F2A44' : '#F1F5F9', youFg: l.who === 'You' ? '#F2C94C' : '#334155', ini: l.who === 'You' ? 'YOU' : l.who.startsWith('SGS') ? 'SGS' : l.who.startsWith('Sahel') ? 'LP' : 'MB' })),
       orderLines: o.kind === 'sell' && o.sell ? [{ n: o.sell.name, q: o.sell.qty + ' ' + o.sell.unit, g: o.sell.grade + ' · ' + o.sell.form }] : o.items.map((it?: any) => { const p = M.product(it.pid) || ({} as AnyObj); return { n: it.name || p.name || it.pid, q: it.qty + ' ' + M.unitOfItem(it), g: p.lab ? p.grade + ' · ' + p.lab : 'Test report on request' }; }),
             hasAmount: !!amount, amount, amountLabel: o.kind === 'sell' ? 'AGREED PRICE' : 'QUOTED TOTAL',
       hasShip: !!o.ship, showTrack: !!o.ship && !(o.refund && o.refund.status === 'refunded'), shipLine: o.ship ? o.ship.partner + ' · ' + o.ship.id : '', shipContact: o.ship ? o.ship.contact : '',
       sh: Object.assign({ id: '', status: '', from: '', to: '', partner: '', contact: '', mode: '', pickup: '', vehicle: '', driver: '', seals: '', eta: '', location: '', pod: '' }, o.ship || ({} as AnyObj)),
       goShipment: () => this.go('shipment'), callDriver: () => this.flash('Calling ' + ((o.ship || ({} as AnyObj)).partner || 'logistics partner')), openPod: () => { const d = (o.docs || []).find((x?: any) => /pod|proof/i.test(x.type)); if (d) this.openDoc({ t: 'api', num: d.number, oid: o.id }); else this.flash('The proof of delivery is not available yet'); },
-      shipSteps: (() => { const ORDER = ['Pickup scheduled', 'Picked up', 'In transit', 'Delivered']; const st = (o.ship || ({} as AnyObj)).status === 'Delivered to vault' ? 'Delivered' : (o.ship || ({} as AnyObj)).status; const i = ORDER.indexOf(st); return ['Booked', 'Collected', 'In transit', 'Delivered'].map((l?: any, k?: any) => ({ l, bar: k <= i ? '#D9B456' : 'rgba(255,255,255,.14)', fg: k <= i ? '#F4F2ED' : '#9C9AA0' })); })(),
+      shipSteps: (() => { const ORDER = ['Pickup scheduled', 'Picked up', 'In transit', 'Delivered']; const st = (o.ship || ({} as AnyObj)).status === 'Delivered to vault' ? 'Delivered' : (o.ship || ({} as AnyObj)).status; const i = ORDER.indexOf(st); return ['Booked', 'Collected', 'In transit', 'Delivered'].map((l?: any, k?: any) => ({ l, bar: k <= i ? '#F2C94C' : 'rgba(255,255,255,.14)', fg: k <= i ? '#F8FAFC' : '#94A3B8' })); })(),
       shipDocs: ((o.ship || ({} as AnyObj)).docs || []).map((n?: any) => ({ n, f: o.ship.id + ' · ' + o.ship.partner, tap: () => this.flash('Transport documents are listed under Documents on the order page'), dl: () => this.flash('Transport documents are listed under Documents on the order page') })), hasShipDocs: !!((o.ship || ({} as AnyObj)).docs || []).length,
-      shipEvents: [...((o.ship || ({} as AnyObj)).events || [])].reverse().map(([t, at]: any, i?: any, a?: any) => ({ t, at: M.fmt(at), dot: i === 0 ? '#D9B456' : '#121214', line: i === a.length - 1 ? 'transparent' : '#E4E2DB' })),
+      shipEvents: [...((o.ship || ({} as AnyObj)).events || [])].reverse().map(([t, at]: any, i?: any, a?: any) => ({ t, at: M.fmt(at), dot: i === 0 ? '#F2C94C' : '#1F2A44', line: i === a.length - 1 ? 'transparent' : '#E2E8F0' })),
       hasInsp: !!o.insp, inspLine: o.insp ? o.insp.when + ' · ' + ((o.form || ({} as AnyObj)).address || '') : '',
       odocs: DK.map(([t, n, f, ref]: any) => ({ n, f, tap: () => this.openDoc({ t, oid: o.id, ref }), dl: () => this.downloadDoc({ t, oid: o.id, ref }) })), hasDocs: DK.length > 0,
       goAction: () => { if (ov.actionScreen === 'quote' && !o.quote) return; this.prefillForms(o); this.go(ov.actionScreen); }, goChat: () => this.go('chat'),
@@ -696,19 +965,19 @@ export class PlatformController {
       partyBuyer: o.kind === 'sell' ? 'Mineral Bridge Ltd' : u.business + ' (' + u.name + ')', partySeller: o.kind === 'sell' ? u.business + ' (' + u.name + ')' : 'Mineral Bridge Ltd',
       clauses: (() => { const ct = s.om[o.id] && s.om[o.id].contract; const rows: any[] = ct && ct.clauses && ct.clauses.length ? ct.clauses.map((x?: any) => [x.h, x.text]) : [['E-contract', 'Loading the contract text from Mineral Bridge…']]; if (ct && amount) rows.unshift(['Price', amount]); return rows.map(([k, v]: any) => ({ k, v })); })(),
       contractNo: s.om[o.id] && s.om[o.id].contract ? 'E-contract ' + s.om[o.id].contract.number : '',
-            signRead: s.sign.read, signReadBg: s.sign.read ? '#121214' : '#fff', toggleRead: () => this.setState((x?: any) => ({ sign: Object.assign({}, x.sign, { read: !x.sign.read }), signErr: '' })),
+            signRead: s.sign.read, signReadBg: s.sign.read ? '#1F2A44' : '#fff', toggleRead: () => this.setState((x?: any) => ({ sign: Object.assign({}, x.sign, { read: !x.sign.read }), signErr: '' })),
       signName: s.sign.name, setSignName: (e?: any) => this.setState((x?: any) => ({ sign: Object.assign({}, x.sign, { name: e.target.value }), signErr: '' })), signErr: s.signErr, signAs: u.name,
       youSignedLabel: o.log.some((l?: any) => l.text === 'E-contract signed by you') ? 'Signed' : 'Pending', mbSignedLabel: o.log.some((l?: any) => l.text === 'E-contract countersigned') ? 'Signed' : 'Pending',
       payMethods: chips(PAY, pf.method, (v?: any) => setPf({ method: v })), payTerms: chips(TERMS, pf.terms, (v?: any) => setPf({ terms: v })),
       pfBill: [fld(pf, pe, setPf, 'billName', 'BILLING NAME'), fld(pf, pe, setPf, 'billAddr', 'BILLING ADDRESS')], pfInstr: pf.instr, setPfInstr: (e?: any) => setPf({ instr: e.target.value }),
       inspDays: chips(days, pf.date, (v?: any) => setPf({ date: v })), inspSlots: chips(SLOTS, pf.time, (v?: any) => setPf({ time: v })),
       pfInsp: [fld(pf, pe, setPf, 'address', 'STORAGE / INSPECTION ADDRESS'), fld(pf, pe, setPf, 'contact', 'CONTACT PERSON'), fld(pf, pe, setPf, 'mobile', 'CONTACT MOBILE')],
-      pfAvailBg: pf.avail ? '#121214' : '#D5D3CC', pfAvailX: pf.avail ? '20px' : '2px', togglePfAvail: () => setPf({ avail: !pf.avail }), pfInspInstr: pf.inspInstr, setPfInspInstr: (e?: any) => setPf({ inspInstr: e.target.value }),
-      pfC1Bg: pf.c1 ? '#121214' : '#fff', pfC2Bg: pf.c2 ? '#121214' : '#fff', togglePfC1: () => setPf({ c1: !pf.c1 }), togglePfC2: () => setPf({ c2: !pf.c2 }),
+      pfAvailBg: pf.avail ? '#1F2A44' : '#CBD5E1', pfAvailX: pf.avail ? '20px' : '2px', togglePfAvail: () => setPf({ avail: !pf.avail }), pfInspInstr: pf.inspInstr, setPfInspInstr: (e?: any) => setPf({ inspInstr: e.target.value }),
+      pfC1Bg: pf.c1 ? '#1F2A44' : '#fff', pfC2Bg: pf.c2 ? '#1F2A44' : '#fff', togglePfC1: () => setPf({ c1: !pf.c1 }), togglePfC2: () => setPf({ c2: !pf.c2 }),
       pfErrList: Object.values(pe).filter(Boolean).join(' · '),
       scMethods: chips(SELLPAY, sc.method, (v?: any) => setSc({ method: v })), scFields: sc.method === 'UPI' ? [fld(sc, se, setSc, 'bank', 'ACCOUNT HOLDER NAME'), fld(sc, se, setSc, 'account', 'UPI ID (e.g. name@bank)')] : [fld(sc, se, setSc, 'bank', 'BANK OR WALLET NAME'), fld(sc, se, setSc, 'account', 'ACCOUNT / WALLET NUMBER')],
       scDays: chips(days, sc.date, (v?: any) => setSc({ date: v })), scSlots: chips(SLOTS, sc.time, (v?: any) => setSc({ time: v })), scAddr: [fld(sc, se, setSc, 'address', 'INSPECTION & PICKUP LOCATION')],
-      scC1Bg: sc.c1 ? '#121214' : '#fff', toggleScC1: () => setSc({ c1: !sc.c1 }), scErrList: Object.values(se).filter(Boolean).join(' · '),
+      scC1Bg: sc.c1 ? '#1F2A44' : '#fff', toggleScC1: () => setSc({ c1: !sc.c1 }), scErrList: Object.values(se).filter(Boolean).join(' · '),
       hasReports: !!(o.company || o.sgs), noReports: !(o.company || o.sgs), hasCompany: !!o.company, hasSgs: !!o.sgs,
       company: o.company ? { by: o.company.by, at: M.fmt(o.company.at), result: o.company.result } : {}, sgs: o.sgs ? { no: o.sgs.no, at: M.fmt(o.sgs.at), result: o.sgs.result } : {},
       sgsRows: [...(o.kind === 'sell' && o.sell ? [['Net weight', o.sell.qty + ' ' + o.sell.unit], ['Grade', o.sell.grade]] : o.items.map((it?: any) => { const p = M.product(it.pid) || ({} as AnyObj); return [it.name || p.name || it.pid, it.qty + ' ' + M.unitOfItem(it) + (p.grade ? ' · ' + p.grade : '')]; })), ['Result', (o.sgs && o.sgs.result) || (o.company && o.company.result) || '—']].map(([k, v]: any) => ({ k, v })),
@@ -717,12 +986,12 @@ export class PlatformController {
       hasBtcQuote: !!btc, getBtcQuote: () => { void this.task(this.remote.btcQuote(true)); },
       copyBtc: () => { if (!btc) return this.flash('Get a Bitcoin quote first'); if (navigator.clipboard) navigator.clipboard.writeText(btc.address).then(() => this.flash('Address copied'), () => this.flash('Copy failed. Select the address and copy it.')); else this.flash('Copy is not available in this browser'); },
       needsRef: paymentNeedsReference(pm), payRefVal: s.payRef || '', setPayRef: (e?: any) => this.setState({ payRef: e.target.value, payErr: '' }), payRefLabel: pm === 'UPI' ? 'UPI TRANSACTION REFERENCE' : 'PAYMENT REFERENCE',
-      quickPays: [['UPI', 'UPI', 'Google Pay, PhonePe, Paytm or any UPI app', 'M7 3h10v18H7zM11 18h2'], ['Net banking', 'Net banking', 'Pay from your bank account online', 'M3 21h18M5 21V10M19 21V10M9 21v-7M15 21v-7M2 10l10-7 10 7z'], ['Bank transfer', 'Bank transfer', 'NEFT, RTGS or SWIFT · upload the receipt', 'M4 7h16v12H4zM4 11h16M8 15h3'], ['Bitcoin', 'Bitcoin', 'On-chain BTC · rate locked for 15 minutes', 'M9 4v16M13 4v3M13 17v3M7 7h7a3 3 0 0 1 0 6H7M7 13h8a3 3 0 0 1 0 6H7']].map(([id, label, sub, icon]: any) => { const on = pm === id; return { label, sub, icon, border: on ? '#121214' : '#E4E2DB', sh: on ? '0 6px 18px rgba(18,18,20,.10)' : 'none', radio: on ? '7px solid #121214' : '1.5px solid #C8C6BF', iconBg: on ? '#121214' : '#F1EFE9', iconFg: on ? '#D9B456' : '#121214', tap: () => { this.setState({ pmethod: id, payErr: '', payRef: '' }); if (id === 'Bitcoin') void this.task(this.remote.btcQuote()); } }; }),
+      quickPays: [['UPI', 'UPI', 'Google Pay, PhonePe, Paytm or any UPI app', 'M7 3h10v18H7zM11 18h2'], ['Net banking', 'Net banking', 'Pay from your bank account online', 'M3 21h18M5 21V10M19 21V10M9 21v-7M15 21v-7M2 10l10-7 10 7z'], ['Bank transfer', 'Bank transfer', 'NEFT, RTGS or SWIFT · upload the receipt', 'M4 7h16v12H4zM4 11h16M8 15h3'], ['Bitcoin', 'Bitcoin', 'On-chain BTC · rate locked for 15 minutes', 'M9 4v16M13 4v3M13 17v3M7 7h7a3 3 0 0 1 0 6H7M7 13h8a3 3 0 0 1 0 6H7']].map(([id, label, sub, icon]: any) => { const on = pm === id; return { label, sub, icon, border: on ? '#1F2A44' : '#E2E8F0', sh: on ? '0 6px 18px rgba(15,23,42,.10)' : 'none', radio: on ? '7px solid #1F2A44' : '1.5px solid #CBD5E1', iconBg: on ? '#1F2A44' : '#F1F5F9', iconFg: on ? '#F2C94C' : '#1F2A44', tap: () => { this.setState({ pmethod: id, payErr: '', payRef: '' }); if (id === 'Bitcoin') void this.task(this.remote.btcQuote()); } }; }),
       isBankPay: pm !== 'Bitcoin' && pm !== 'UPI' && pm !== 'Net banking', paying: !!s.paying, payingText: 'Submitting your payment details…',
       payHead: pm === 'Bitcoin' ? 'SEND BITCOIN TO' : pm === 'Bank transfer' ? 'TRANSFER TO' : pm === 'Net banking' ? 'PAY FROM YOUR ONLINE BANKING TO' : 'UPI DETAILS',
       askOtherPay: () => { this.setState(() => ({ msg: 'Hi, I would like to pay ' + o.id + ' (' + amount + ') by letter of credit or another method. Please advise.' })); this.go('chat'); },
       payBank: payRows.map(([k, v]: any) => ({ k, v })),
-            proof: s.proof, noProof: !s.proof, proofBg: s.proof ? '#E2F2E9' : '#fff', proofBorder: s.proof ? '#B7DFC8' : '#D5D3CC', proofLabel: s.uploads.proof.length ? s.uploads.proof.map((x?: any) => x.name).join(', ') + ' added ✓' : '', toggleProof: () => { if (s.uploads.proof.length) this.remote.removeUpload('proof', s.uploads.proof.length - 1); else this.remote.pickFiles('proof', 'payment_proof', { limit: 3, max: 3 }); this.setState({ payErr: '' }); }, payErr: s.payErr,
+            proof: s.proof, noProof: !s.proof, proofBg: s.proof ? '#E2F2E9' : '#fff', proofBorder: s.proof ? '#B7DFC8' : '#CBD5E1', proofLabel: s.uploads.proof.length ? s.uploads.proof.map((x?: any) => x.name).join(', ') + ' added ✓' : '', toggleProof: () => { if (s.uploads.proof.length) this.remote.removeUpload('proof', s.uploads.proof.length - 1); else this.remote.pickFiles('proof', 'payment_proof', { limit: 3, max: 3 }); this.setState({ payErr: '' }); }, payErr: s.payErr,
       rcExpected: o.kind === 'buy' ? o.items.map((it?: any) => it.qty + ' ' + M.unitOfItem(it)).join(' + ') : '',
       rcQty: s.rc.qty, setRcQty: (e?: any) => this.setState((x?: any) => ({ rc: Object.assign({}, x.rc, { qty: e.target.value }), rcErr: '' })),
       rcConds: chips(['Good', 'Minor damage', 'Damaged'], s.rc.cond, (v?: any) => this.setState((x?: any) => ({ rc: Object.assign({}, x.rc, { cond: v }) }))),
@@ -735,7 +1004,7 @@ export class PlatformController {
         ...(o.hold === 'discrepancy' ? [{ l: 'Refund the difference', tap: () => this.chatRefund(o, true) }] : []),
         { l: 'Where is my order?', tap: () => this.chatSay(o, 'Where is my order?', o.id + ' is at: ' + this.view(o).headline + '. ' + this.view(o).next) },
         { l: 'Talk to a person', tap: () => this.sendChat(o, 'I would like to talk to a person about ' + o.id + '.') }
-      ].map((q?: any) => Object.assign({ bg: '#fff', fg: '#121214', border: '#E4E2DB' }, q)),
+      ].map((q?: any) => Object.assign({ bg: '#fff', fg: '#1F2A44', border: '#E2E8F0' }, q)),
       sendMsg: () => { const t = s.msg.trim(); if (!t) return; this.sendChat(o, t); if (/refund|money back|reimburs/i.test(t)) this.chatRefund(o, false, t, false); },
       chatRef: o.id + ' · ' + M.titleOf(o)
     });
@@ -759,12 +1028,12 @@ export class PlatformController {
   sellVals(): any {
     const s = this.state, M = X(), d = s.draft, de = s.draftErr || ({} as AnyObj), setD = (p?: any) => this.setState((x?: any) => ({ draft: Object.assign({}, x.draft, p), draftErr: {} }));
     const q = s.search.trim().toLowerCase();
-    const chips = (list?: any, val?: any, set?: any) => list.map((v?: any) => ({ label: v, bg: val === v ? '#121214' : '#fff', fg: val === v ? '#F4F2ED' : '#121214', border: val === v ? '#121214' : '#E4E2DB', tap: () => set(v) }));
+    const chips = (list?: any, val?: any, set?: any) => list.map((v?: any) => ({ label: v, bg: val === v ? '#1F2A44' : '#fff', fg: val === v ? '#F8FAFC' : '#1F2A44', border: val === v ? '#1F2A44' : '#E2E8F0', tap: () => set(v) }));
     const DOCS = ['Test / assay report', 'Certificate of origin', 'Mining licence or permit'];
     const so = s.orders.find((o?: any) => o.id === s.oid);
     return {
       buyerOnly: !!s.user && s.user.role === 'buyer',
-      sellGroups: M.CATS.map((c?: any) => ({ name: c.name, items: c.minerals.filter(([, n]: any) => !q || n.toLowerCase().includes(q)).map(([id, n]: any) => ({ n, tap: () => { setD({ mineral: id }); this.go('sellForm'); } })) })).filter((g?: any) => g.items.length),
+      sellGroups: M.CATS.map((c?: any) => ({ name: c.name, items: c.minerals.filter(([, n]: any) => !q || n.toLowerCase().includes(q)).map(([id, n]: any) => ({ n, img: (() => { const pp = M.PRODUCTS.find((x?: any) => x.mineral === id); return pp ? PIMG(pp) : PIMG({ mineral: id, img: c.img }); })(), tap: () => { setD({ mineral: id }); this.go('sellForm'); } })) })).filter((g?: any) => g.items.length),
       sellNone: !!q && !M.CATS.some((c?: any) => c.minerals.some(([, n]: any) => n.toLowerCase().includes(q))),
       hasDraft: s.hasDraft && !!d.mineral, draftLine: M.mineralName(d.mineral || 'gold') + ' · ' + d.photos + (d.photos === 1 ? ' photo' : ' photos') + (d.qty ? ' · ' + d.qty + ' ' + d.unit : ''),
       resumeDraft: () => this.go('sellForm'), discardDraft: () => this.setState({ sheet: 'discardDraft' }),
@@ -772,13 +1041,13 @@ export class PlatformController {
       // BUG-011: empty slots stay blank (no catalogue placeholder); only real upload URIs preview.
       dPhotos: Array.from({ length: Math.max(3, s.uploads.sellPhotos.length) }, (_?: any, i?: any) => { const up = s.uploads.sellPhotos[i]; return { has: !!up, empty: !up, img: up && up.uri ? "url('" + up.uri + "')" : 'none' }; }),
       dPhotoCount: d.photos + ' of 3 minimum', addPhoto: () => { this.remote.pickFiles('sellPhotos', 'sell_photo', { limit: 10, max: 10 }); this.setState({ draftErr: {} }); }, removePhoto: () => this.remote.removeUpload('sellPhotos', s.uploads.sellPhotos.length - 1),
-            dPhotoErr: de.photos || '', dPhotoBorder: de.photos ? '#B42318' : '#D5D3CC',
-      dQty: d.qty, setDQty: (e?: any) => setD({ qty: e.target.value.replace(/[^\d.]/g, '') }), dQtyErr: de.qty || '', dQtyBorder: de.qty ? '#B42318' : '#E4E2DB',
+            dPhotoErr: de.photos || '', dPhotoBorder: de.photos ? '#B42318' : '#CBD5E1',
+      dQty: d.qty, setDQty: (e?: any) => setD({ qty: e.target.value.replace(/[^\d.]/g, '') }), dQtyErr: de.qty || '', dQtyBorder: de.qty ? '#B42318' : '#E2E8F0',
       dUnits: chips(['g', 'kg', 't', 'ct'], d.unit, (v?: any) => setD({ unit: v })),
-      dGrade: d.grade, setDGrade: (e?: any) => setD({ grade: e.target.value }), dGradeErr: de.grade || '', dGradeBorder: de.grade ? '#B42318' : '#E4E2DB',
+      dGrade: d.grade, setDGrade: (e?: any) => setD({ grade: e.target.value }), dGradeErr: de.grade || '', dGradeBorder: de.grade ? '#B42318' : '#E2E8F0',
       dForms: chips(['Raw', 'Semi-finished', 'Finished'], d.form, (v?: any) => setD({ form: v })),
-      dDetails: d.details, setDDetails: (e?: any) => setD({ details: e.target.value }), dDetailsErr: de.details || '', dDetailsBorder: de.details ? '#B42318' : '#E4E2DB',
-      dDocs: DOCS.map((n?: any) => { const on = s.uploads.sellDocs.some((x?: any) => x.label === n); return { n, on, off: !on, bg: on ? '#E2F2E9' : '#fff', border: on ? '#B7DFC8' : '#D5D3CC', tap: () => { if (s.uploading) return; if (on) this.remote.removeUpload('sellDocs', n); else this.remote.pickFiles('sellDocs', 'sell_document', { label: n, limit: 1 }); } }; }),
+      dDetails: d.details, setDDetails: (e?: any) => setD({ details: e.target.value }), dDetailsErr: de.details || '', dDetailsBorder: de.details ? '#B42318' : '#E2E8F0',
+      dDocs: DOCS.map((n?: any) => { const on = s.uploads.sellDocs.some((x?: any) => x.label === n); return { n, on, off: !on, bg: on ? '#E2F2E9' : '#fff', border: on ? '#B7DFC8' : '#CBD5E1', tap: () => { if (s.uploading) return; if (on) this.remote.removeUpload('sellDocs', n); else this.remote.pickFiles('sellDocs', 'sell_document', { label: n, limit: 1 }); } }; }),
             sellRef: so ? so.id : '', sellSummary: so && so.kind === 'sell' ? so.sell.qty + ' ' + so.sell.unit + ' of ' + so.sell.name + ' · ' + so.sell.photos + ' photos' : '',
       sellNext: [['Review and price', 'Our operations team checks your request and contacts you to agree a price.'], ['E-contract', 'Both sides accept the price, then sign the e-contract.'], ['Inspection and payment', 'Mineral Bridge inspects the product at your site, SGS tests it, then payment is released before pickup.']].map(([t, b]: any, i?: any) => ({ n: String(i + 1), t, b }))
     };
@@ -827,10 +1096,10 @@ export class PlatformController {
       startContactChange: (field: 'phone' | 'email', channel: OtpChannel, raw: string) => this.startContactChange(field, channel, raw),
       ct: ch ? {
         active: true, via: WHERE[ch.channel] || ch.channel, noun: ch.field === 'email' ? 'email' : 'number', to: ch.masked || ch.identifier,
-        code, boxes: [0, 1, 2, 3].map(i => ({ v: code[i] || '', border: code.length === i ? '#121214' : '#E4E2DB' })),
+        code, boxes: [0, 1, 2, 3].map(i => ({ v: code[i] || '', border: code.length === i ? '#1F2A44' : '#E2E8F0' })),
         setCode: (e?: any) => this.setState({ contactCode: String(e.target.value).replace(/\D/g, '').slice(0, 4), contactErr: '' }),
         err: s.contactErr, devOtp: IS_DEV ? ch.devOtp : '',
-        resendOff: off, resendFg: wait > 0 || s.contactBusy ? '#8B8A90' : '#8A6A1C', resendLabel: wait > 0 ? 'Resend code in ' + wait + 's' : 'Resend code',
+        resendOff: off, resendFg: wait > 0 || s.contactBusy ? '#5B6B82' : '#8A6508', resendLabel: wait > 0 ? 'Resend code in ' + wait + 's' : 'Resend code',
         resend: () => { if (off) return; void this.task(this.remote.resendContactChange()); }
       } : { active: false }
     };
@@ -870,7 +1139,7 @@ export class PlatformController {
   accountVals(): any {
     const s = this.state, M = X(), u = s.user, go = (x?: any, e?: any) => () => this.go(x, e);
     const bt = u && u.buyerType ? (M.BUYER_TYPES.find((b?: any) => b[0] === u.buyerType) || [])[1] : '', stp = u && u.sellerType ? (M.SELLER_TYPES.find((b?: any) => b[0] === u.sellerType) || [])[1] : '';
-    const kycTone = !u ? ['', ''] : u.kyc === 'verified' ? ['#E2F2E9', '#17704C'] : u.kyc === 'pending' ? ['#FBF3E4', '#A1620B'] : ['#FDECEA', '#B42318'];
+    const kycTone = !u ? ['', ''] : u.kyc === 'verified' ? ['#E2F2E9', '#17704C'] : u.kyc === 'pending' ? ['#FEF7E0', '#8A5A06'] : ['#FDECEA', '#B42318'];
     const kycWord = !u ? '' : ({ verified: 'KYC verified', pending: 'KYC under review', rejected: 'KYC needs action', none: 'KYC not started' } as AnyObj)[u.kyc];
     const ed = s.edit || ({} as AnyObj), ee = s.editErr || ({} as AnyObj), setE = (p?: any) => this.setState((x?: any) => ({ edit: Object.assign({}, x.edit, p), editErr: {} }));
     return {
@@ -879,16 +1148,16 @@ export class PlatformController {
       pContact: u ? [u.phone, u.email].filter(Boolean).join(' · ') : '', kycWord, kycBg: kycTone[0], kycFg: kycTone[1], signedIn: !!u, guest: !u,
       menu: u ? [['ACCOUNT', [['Edit profile', 'Name, business, contact', 'M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z', () => { this.setState({ edit: { name: u.name, business: u.business, email: u.email || '', phone: u.phone || '', country: u.country || '' }, editErr: {} }); this.go('editProfile'); }], ['Buyer / seller type', [bt, stp].filter(Boolean).join(' + '), 'M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8M23 21v-2a4 4 0 0 0-3-3.9', () => { this.setState({ reg: Object.assign({}, s.reg, { role: u.role, buyerType: u.buyerType || '', sellerType: u.sellerType || '' }), regErr: '' }); this.go('bizType'); }], ['KYC & documents', kycWord, 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z', go('kycStatus')]]],
         ['ACTIVITY', [['Auctions', (s.auctions || []).filter((a?: any) => a.status === 'live').length + ' live · ' + (s.auctions || []).filter((a?: any) => (a.mine || a.bids.some((b?: any) => b.who === 'You')) && a.status !== 'ended').length + ' with your bids', 'M14 3.5 20.5 10 17 13.5 10.5 7zM10.5 7 4 13.5 7.5 17 14 10.5M3 21h9', () => this.go('auctions', { atab: 'live' })], ['Refunds', (() => { const n = s.orders.filter((x?: any) => x.refund && !['refunded', 'declined'].includes(x.refund.status)).length; return n ? n + ' in progress' : 'Request and track refunds'; })(), 'M3 12a9 9 0 1 0 3-6.7L3 8M3 3v5h5', () => this.go('refunds')], ['Orders & sell requests', s.orders.length + ' in your history', 'M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2M9 12h6M9 16h4', () => this.jump('orders')], ['Notifications', (s.unread || s.notifs.filter((n?: any) => !n.read).length) + ' unread', 'M18 8a6 6 0 0 0-12 0c0 7-3 9-3 9h18s-3-2-3-9M13.7 21a2 2 0 0 1-3.4 0', go('notifs')], ['Notification channels', ['email', 'sms', 'whatsapp', 'push'].filter((k?: any) => s.prefs[k]).length + ' of 4 on', 'M4 4h16v12H5.2L4 17.2z', go('prefs')]]],
-        ['HELP', [['Help & support', 'Phone, SMS, email, WhatsApp, chat', 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01', go('help')]]]].map(([h, rows]: any) => ({ h, rows: rows.map(([l, sub, icon, tap]: any, i?: any) => ({ l, sub, icon, tap, line: i === rows.length - 1 ? 'transparent' : '#EFEDE7' })) })) : [],
+        ['HELP', [['Help & support', 'Phone, SMS, email, WhatsApp, chat', 'M12 22a10 10 0 1 0 0-20 10 10 0 0 0 0 20M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01', go('help')]]]].map(([h, rows]: any) => ({ h, rows: rows.map(([l, sub, icon, tap]: any, i?: any) => ({ l, sub, icon, tap, line: i === rows.length - 1 ? 'transparent' : '#F1F5F9' })) })) : [],
       logout: () => this.setState({ sheet: 'logout' }),
-      editFields: [['name', 'FULL NAME'], ['business', 'BUSINESS NAME'], ['phone', 'MOBILE'], ['email', 'EMAIL'], ['country', 'COUNTRY']].map(([k, l]: any) => ({ k, l, contact: k === 'phone' || k === 'email', v: ed[k] || '', err: ee[k] || '', border: ee[k] ? '#B42318' : '#E4E2DB', set: (e?: any) => setE({ [k]: e.target.value }) })),
+      editFields: [['name', 'FULL NAME'], ['business', 'BUSINESS NAME'], ['phone', 'MOBILE'], ['email', 'EMAIL'], ['country', 'COUNTRY']].map(([k, l]: any) => ({ k, l, contact: k === 'phone' || k === 'email', v: ed[k] || '', err: ee[k] || '', border: ee[k] ? '#B42318' : '#E2E8F0', set: (e?: any) => setE({ [k]: e.target.value }) })),
       showTypePicker: s.screen === 'regType' || s.screen === 'bizType', typeTitle: s.screen === 'bizType' ? 'Update your account type' : 'How will you use Mineral Bridge?',
       kycStatusWord: kycWord, kycIsPending: !!u && u.kyc === 'pending', kycIsRejected: !!u && u.kyc === 'rejected', kycIsVerified: !!u && u.kyc === 'verified', kycIsNone: !!u && u.kyc === 'none',
       kycReason: u ? u.kycReason || '' : '', kycSubmitted: u && u.kycAt ? M.fmt(u.kycAt) : '—', kycStatusRef: u ? u.kycRef || '—' : '',
       kycList: this.kycListVals(),
-      notifs: s.notifs.map((n?: any) => ({ title: n.title, note: n.note, via: 'Sent by ' + (['email', 'sms', 'whatsapp', 'push'].filter((k?: any) => s.prefs[k]).map((k?: any) => ({ email: 'Email', sms: 'SMS', whatsapp: 'WhatsApp', push: 'app' } as AnyObj)[k]).join(' · ') || 'app'), at: M.fmt(n.at), dot: n.read ? 'transparent' : '#D9B456', tap: () => { void this.task(this.remote.readNotif(n)); if (n.oid) this.go('order', { oid: n.oid }); else if (n.to) this.go(n.to); } })),
+      notifs: s.notifs.map((n?: any) => ({ title: n.title, note: n.note, via: 'Sent by ' + (['email', 'sms', 'whatsapp', 'push'].filter((k?: any) => s.prefs[k]).map((k?: any) => ({ email: 'Email', sms: 'SMS', whatsapp: 'WhatsApp', push: 'app' } as AnyObj)[k]).join(' · ') || 'app'), at: M.fmt(n.at), dot: n.read ? 'transparent' : '#F2C94C', tap: () => { void this.task(this.remote.readNotif(n)); if (n.oid) this.go('order', { oid: n.oid }); else if (n.to) this.go(n.to); } })),
       noNotifs: !s.notifs.length, readAll: () => { void this.task(this.remote.readAll()); },
-            prefRows: [['email', 'Email', (u || ({} as AnyObj)).email || 'Add an email in Edit profile'], ['sms', 'SMS', (u || ({} as AnyObj)).phone || 'Add a mobile number'], ['whatsapp', 'WhatsApp', (u || ({} as AnyObj)).phone || 'Add a mobile number'], ['push', 'App notifications', 'On this device']].map(([k, l, sub]: any) => ({ l, sub, bg: s.prefs[k] ? '#121214' : '#D5D3CC', x: s.prefs[k] ? '20px' : '2px', tap: () => { const on = ['email', 'sms', 'whatsapp', 'push'].filter((q?: any) => s.prefs[q]); if (s.prefs[k] && on.length <= 1) return this.flash('Keep at least one channel on'); void this.task(this.remote.togglePref(k)); } })),
+            prefRows: [['email', 'Email', (u || ({} as AnyObj)).email || 'Add an email in Edit profile'], ['sms', 'SMS', (u || ({} as AnyObj)).phone || 'Add a mobile number'], ['whatsapp', 'WhatsApp', (u || ({} as AnyObj)).phone || 'Add a mobile number'], ['push', 'App notifications', 'On this device']].map(([k, l, sub]: any) => ({ l, sub, bg: s.prefs[k] ? '#1F2A44' : '#CBD5E1', x: s.prefs[k] ? '20px' : '2px', tap: () => { const on = ['email', 'sms', 'whatsapp', 'push'].filter((q?: any) => s.prefs[q]); if (s.prefs[k] && on.length <= 1) return this.flash('Keep at least one channel on'); void this.task(this.remote.togglePref(k)); } })),
             helpChannels: ((ct?: any) => [['Phone', ct ? ct.phone : 'Loading…', ct ? 'tel:' + ct.phone : '', 'M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z'], ['SMS', ct ? ct.phone : 'Loading…', ct ? 'sms:' + ct.phone : '', 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'], ['Email', ct ? ct.email : 'Loading…', ct ? 'mailto:' + ct.email : '', 'M4 4h16v16H4zM22 6l-10 7L2 6'], ['WhatsApp', ct ? ct.whatsapp : 'Loading…', ct && ct.whatsapp ? 'https://wa.me/' + String(ct.whatsapp).replace(/\D/g, '') : '', 'M3 21l1.6-5A9 9 0 1 1 8 19.4z']].map(([l, v, href, icon]: any) => ({ l, v, icon, tap: () => { if (!href) { this.flash('Contact details are loading. Try again in a moment.'); void this.task(this.remote.loadFaqs()); return; } window.open(href, l === 'WhatsApp' ? '_blank' : '_self'); } })))(s.contacts),
             goSupportChat: () => { if (!s.user) return this.flash('Sign in to message Mineral Bridge support. You can also use phone, email or WhatsApp.'); this.go('support'); }, goKycFix: () => this.go('kyc'),
       faqs: (s.faqs || []).map(({ q: qq, a }: any, i?: any) => ({ qq, a, open: s.faq === i, sign: s.faq === i ? '−' : '+', tap: () => this.setState({ faq: s.faq === i ? -1 : i }) }))
@@ -987,11 +1256,11 @@ export class PlatformController {
     const mineOf = (a?: any) => !!a.mine || a.bids.some((b?: any) => b.who === 'You');
     const leadOf = (a?: any) => a.leading !== undefined ? !!a.leading : !!(a.bids.length && a.bids[a.bids.length - 1].who === 'You');
     const card = (a?: any) => { const live = a.status === 'live', up = a.status === 'upcoming', mine = mineOf(a), lead = leadOf(a);
-      return { id: a.id, name: nameOf(a), qty: qtyOf(a), img: imgOf(a), live, pill: live ? 'LIVE' : up ? 'UPCOMING' : 'ENDED', pillBg: live ? '#C2412D' : up ? '#D9B456' : '#121214', pillFg: live || !up ? '#fff' : '#121214',
+      return { id: a.id, name: nameOf(a), qty: qtyOf(a), img: imgOf(a), live, pill: live ? 'LIVE' : up ? 'UPCOMING' : 'ENDED', pillBg: live ? '#C2412D' : up ? '#F2C94C' : '#1F2A44', pillFg: live || !up ? '#fff' : '#1F2A44',
         priceLabel: live ? 'Current bid' : up ? 'Starting bid' : 'Sold for', price: M.money(up ? a.start : this.aucCur(a)),
-        timeLabel: live ? 'Ends in' : up ? 'Opens in' : 'Ended', time: live ? this.left(a.endsAt - now) : up ? this.left((a.startsAt || now) - now) : M.fmt(a.endsAt), timeFg: live && a.endsAt - now < 36e5 ? '#C2412D' : '#121214',
+        timeLabel: live ? 'Ends in' : up ? 'Opens in' : 'Ended', time: live ? this.left(a.endsAt - now) : up ? this.left((a.startsAt || now) - now) : M.fmt(a.endsAt), timeFg: live && a.endsAt - now < 36e5 ? '#C2412D' : '#1F2A44',
         myTag: a.result === 'won' ? 'You won' : a.result === 'lost' ? 'Outbid · ended' : live && mine ? (lead ? 'You are leading' : 'You are outbid') : up && s.reminders[a.id] ? 'Reminder on' : '',
-        myBg: a.result === 'won' || (live && lead) ? '#E2F2E9' : (live && mine) || a.result === 'lost' ? '#FDECEA' : '#F1EFE9', myFg: a.result === 'won' || (live && lead) ? '#17704C' : (live && mine) || a.result === 'lost' ? '#B42318' : '#3A3940',
+        myBg: a.result === 'won' || (live && lead) ? '#E2F2E9' : (live && mine) || a.result === 'lost' ? '#FDECEA' : '#F1F5F9', myFg: a.result === 'won' || (live && lead) ? '#17704C' : (live && mine) || a.result === 'lost' ? '#B42318' : '#334155',
         tap: () => this.openAuction(a.id) }; };
     const TABS: any[] = [['live', 'Live', (a?: any) => a.status === 'live'], ['upcoming', 'Upcoming', (a?: any) => a.status === 'upcoming'], ['ended', 'Ended', (a?: any) => a.status === 'ended'], ['mine', 'My bids', (a?: any) => mineOf(a) || s.reminders[a.id]]];
     const tab = TABS.find((t?: any) => t[0] === s.atab) || TABS[0], list = A.filter(tab[2]);
@@ -1001,18 +1270,18 @@ export class PlatformController {
         lostNote: mine ? 'Another bidder placed a higher bid. Turn on reminders for upcoming lots so you do not miss the next one.' : 'Bidding has closed for this lot.',
         bidCount: (a.count != null ? a.count : a.bids.length) + ((a.count != null ? a.count : a.bids.length) === 1 ? ' bid' : ' bids') + ' · step ' + M.money(inc), timeSub: live ? 'until bidding closes' : up ? 'until bidding opens' : 'bidding closed',
         min: M.money(this.aucMin(a)), opens: up && a.startsAt ? M.fmt(a.startsAt) : '', startBid: M.money(a.start), autoNote: a.autoMax ? ' · auto-bid up to ' + M.money(a.autoMax) : '',
-        rows: [['Lot', p.id || a.id], ['Quantity', qtyOf(a) || '—'], ['Purity', a.grade || (p.lab ? p.grade : 'Report on request')], ['Testing company', p.lab || '—'], ['Origin', p.origin || '—']].map(([k, v]: any, i?: any, arr?: any) => ({ k, v, line: i === arr.length - 1 ? 'transparent' : '#EFEDE7' })),
-        hasBids: a.bids.length > 0, bids: [...a.bids].reverse().map((b?: any, i?: any, arr?: any) => ({ who: b.who === 'You' ? (b.auto ? 'You (auto-bid)' : 'You') : b.who, ini: b.who === 'You' ? 'YOU' : 'B' + b.who.slice(-2), amt: M.money(b.amt), at: M.fmt(b.at), bg: b.who === 'You' ? '#121214' : i === 0 ? '#FBF3E4' : '#F1EFE9', fg: b.who === 'You' ? '#D9B456' : '#3A3940', line: i === arr.length - 1 ? 'transparent' : '#EFEDE7' })) }); })();
+        rows: [['Lot', p.id || a.id], ['Quantity', qtyOf(a) || '—'], ['Purity', a.grade || (p.lab ? p.grade : 'Report on request')], ['Testing company', p.lab || '—'], ['Origin', p.origin || '—']].map(([k, v]: any, i?: any, arr?: any) => ({ k, v, line: i === arr.length - 1 ? 'transparent' : '#F1F5F9' })),
+        hasBids: a.bids.length > 0, bids: [...a.bids].reverse().map((b?: any, i?: any, arr?: any) => ({ who: b.who === 'You' ? (b.auto ? 'You (auto-bid)' : 'You') : b.who, ini: b.who === 'You' ? 'YOU' : 'B' + b.who.slice(-2), amt: M.money(b.amt), at: M.fmt(b.at), bg: b.who === 'You' ? '#1F2A44' : i === 0 ? '#FEF7E0' : '#F1F5F9', fg: b.who === 'You' ? '#F2C94C' : '#334155', line: i === arr.length - 1 ? 'transparent' : '#F1F5F9' })) }); })();
     const amt = () => Math.round(parseFloat(String(s.bidAmt).replace(/[^\d.]/g, ''))) || (a ? this.aucMin(a) : 0);
     const won = A.find((x?: any) => x.id === s.aid && x.result === 'won');
     return {
-      aucTabs: TABS.map(([id, label, f]: any) => { const n = A.filter(f).length; return { label, n: n ? String(n) : '', bg: s.atab === id ? '#121214' : 'transparent', fg: s.atab === id ? '#F4F2ED' : '#6B6A70', tap: () => this.setState({ atab: id }) }; }),
+      aucTabs: TABS.map(([id, label, f]: any) => { const n = A.filter(f).length; return { label, n: n ? String(n) : '', bg: s.atab === id ? '#1F2A44' : 'transparent', fg: s.atab === id ? '#F8FAFC' : '#5B6B82', tap: () => this.setState({ atab: id }) }; }),
       aucList: list.map(card), aucEmpty: !list.length, aucEmptyText: s.auctionsLoading && !A.length ? 'Loading auctions…' : s.atab === 'mine' ? 'You have not bid on any auction yet' : 'No ' + tab[1].toLowerCase() + ' auctions right now',
       au, bidAmt: s.bidAmt, setBidAmt: (e?: any) => this.setState({ bidAmt: e.target.value.replace(/[^\d]/g, ''), bidErr: '' }), bidErr: s.bidErr,
       bidUp: () => this.setState({ bidAmt: String(amt() + inc), bidErr: '' }), bidDown: () => a && this.setState({ bidAmt: String(Math.max(this.aucMin(a), amt() - inc)), bidErr: '' }),
       bidQuick: [1, 2, 5].map((k?: any) => ({ label: '+' + M.money(inc * k), tap: () => a && this.setState({ bidAmt: String(this.aucCur(a) + inc * k), bidErr: '' }) })),
       bidAgain: () => a && this.setState((x?: any) => { const min = this.aucMin(a), mx = parseFloat(x.autoMax) || 0; return { bidAmt: String(min), bidErr: '', autoMax: x.autoOn && mx < min ? String(min + 10 * inc) : x.autoMax }; }),
-      autoOn: s.autoOn, autoBg: s.autoOn ? '#121214' : '#D5D3CC', autoX: s.autoOn ? '20px' : '2px',
+      autoOn: s.autoOn, autoBg: s.autoOn ? '#1F2A44' : '#CBD5E1', autoX: s.autoOn ? '20px' : '2px',
       // BUG-017: register / clear auto-bid with the server when the toggle changes.
       toggleAuto: () => {
         if (!a) return;
@@ -1099,11 +1368,11 @@ export class PlatformController {
     return {
       cxCan: ci.mode !== 'none' && !!o, cxBtn: ci.mode === 'refund' ? 'Cancel order and get a refund' : sell ? 'Cancel sell request' : 'Cancel order', goCancel: () => this.openCancel(o),
       cxHead: ci.mode === 'refund' ? 'Cancelling after payment' : 'Cancel before ' + (sell ? 'inspection' : 'payment'),
-      cxBoxBg: ci.mode === 'refund' ? '#FBF3E4' : '#F1EFE9', cxBoxBorder: ci.mode === 'refund' ? '#EFDDB8' : '#E4E2DB', cxBoxFg: ci.mode === 'refund' ? '#7A4A08' : '#121214',
+      cxBoxBg: ci.mode === 'refund' ? '#FEF7E0' : '#F1F5F9', cxBoxBorder: ci.mode === 'refund' ? '#F5DE95' : '#E2E8F0', cxBoxFg: ci.mode === 'refund' ? '#6B4E05' : '#1F2A44',
       cxPoints: pts.map((t?: any) => ({ t })),
-      cxReasons: R.map((v?: any) => ({ label: v, bg: c.reason === v ? '#121214' : '#fff', fg: c.reason === v ? '#F4F2ED' : '#121214', border: c.reason === v ? '#121214' : '#E4E2DB', tap: () => setC({ reason: v }) })),
+      cxReasons: R.map((v?: any) => ({ label: v, bg: c.reason === v ? '#1F2A44' : '#fff', fg: c.reason === v ? '#F8FAFC' : '#1F2A44', border: c.reason === v ? '#1F2A44' : '#E2E8F0', tap: () => setC({ reason: v }) })),
       cxNoteLabel: c.reason === 'Other' ? 'TELL US WHY' : 'NOTE (OPTIONAL)', cxNote: c.note || '', setCxNote: (e?: any) => setC({ note: e.target.value }),
-      cxAgree: !!c.agree, cxAgreeBg: c.agree ? '#121214' : '#fff', toggleCxAgree: () => setC({ agree: !c.agree }),
+      cxAgree: !!c.agree, cxAgreeBg: c.agree ? '#1F2A44' : '#fff', toggleCxAgree: () => setC({ agree: !c.agree }),
       cxAgreeText: ci.mode === 'refund' ? 'I want to cancel this order and request a full refund.' : sell ? 'I understand this sell request will be closed and cannot be reopened.' : 'I understand this order will be closed and cannot be reopened.',
       cxErr: s.cxErr || ''
     };
@@ -1132,8 +1401,8 @@ export class PlatformController {
   }
   refundVals(o?: any): any {
     const s = this.state, M = X(), r = s.rf, setR = (p?: any) => this.setState((x?: any) => ({ rf: Object.assign({}, x.rf, p), rfErr: '' }));
-    const chips = (list?: any, val?: any, set?: any) => list.map(([v, l]: any) => ({ label: l, bg: val === v ? '#121214' : '#fff', fg: val === v ? '#F4F2ED' : '#121214', border: val === v ? '#121214' : '#E4E2DB', tap: () => set(v) }));
-    const tone = (st?: any) => (({ requested: ['#FBF3E4', '#A1620B', 'Requested'], review: ['#FBF3E4', '#A1620B', 'Under review'], approved: ['#E8EEF9', '#2B4C8C', 'Approved'], processing: ['#E8EEF9', '#2B4C8C', 'Processing'], refunded: ['#E2F2E9', '#17704C', 'Refunded'], declined: ['#FDECEA', '#B42318', 'Declined'] } as AnyObj)[st] || ['#F1EFE9', '#3A3940', st]);
+    const chips = (list?: any, val?: any, set?: any) => list.map(([v, l]: any) => ({ label: l, bg: val === v ? '#1F2A44' : '#fff', fg: val === v ? '#F8FAFC' : '#1F2A44', border: val === v ? '#1F2A44' : '#E2E8F0', tap: () => set(v) }));
+    const tone = (st?: any) => (({ requested: ['#FEF7E0', '#8A5A06', 'Requested'], review: ['#FEF7E0', '#8A5A06', 'Under review'], approved: ['#E8EEF9', '#2B4C8C', 'Approved'], processing: ['#E8EEF9', '#2B4C8C', 'Processing'], refunded: ['#E2F2E9', '#17704C', 'Refunded'], declined: ['#FDECEA', '#B42318', 'Declined'] } as AnyObj)[st] || ['#F1F5F9', '#334155', st]);
     const rfo = o && o.refund, ti = rfo ? RF_STEPS.findIndex((x?: any) => x[0] === rfo.status) : -1;
     const method = o ? ((o.form || ({} as AnyObj)).method || 'Bank transfer') : '';
     const list = s.orders.filter((x?: any) => x.refund).sort((a?: any, b?: any) => b.refund.at - a.refund.at);
@@ -1142,18 +1411,18 @@ export class PlatformController {
       hasDisc: !!(o && o.hold === 'discrepancy' && o.disc), disc: o && o.disc ? { status: 'Under review', line: o.disc.qty + ' received · condition ' + o.disc.cond.toLowerCase() + ' · ' + o.disc.photos + (o.disc.photos === 1 ? ' photo' : ' photos'), note: o.disc.note } : {},
       discRefund: () => this.openRefund(o, { reason: 'Quantity or quality issue', note: 'Delivery discrepancy: ' + ((o && o.disc) || ({} as AnyObj)).note, type: 'partial' }), demoRefundDecline: () => this.demo('refundDecline'),
       hasRefund: !!rfo, rf: rfo ? { ref: rfo.ref, amount: M.money(rfo.amount), typeLabel: rfo.type === 'full' ? 'Full refund' : 'Partial refund', reason: rfo.reason, to: rfo.to, statusLabel: tone(rfo.status)[2], pillBg: tone(rfo.status)[0], pillFg: tone(rfo.status)[1], declined: rfo.status === 'declined', declineReason: rfo.reason2 || '', showSteps: rfo.status !== 'declined', bankRef: rfo.bankRef || '',
-        steps: RF_STEPS.map(([, l]: any, i?: any) => ({ l, bar: i <= ti ? (rfo.status === 'refunded' ? '#17704C' : '#121214') : '#E4E2DB', fg: i <= ti ? '#121214' : '#8B8A90', w: i === ti ? 600 : 400 })) } : {},
+        steps: RF_STEPS.map(([, l]: any, i?: any) => ({ l, bar: i <= ti ? (rfo.status === 'refunded' ? '#17704C' : '#1F2A44') : '#E2E8F0', fg: i <= ti ? '#1F2A44' : '#5B6B82', w: i === ti ? 600 : 400 })) } : {},
       rfPaid: o && o.quote ? M.money(o.quote.total - (o.refundedSoFar || 0)) : '', rfPaidVia: method + (o && o.refundedSoFar ? ' · ' + M.money(o.refundedSoFar) + ' already refunded' : ''),
       rfReasons: chips(REFUND_REASONS.map((x?: any) => [x, x]), r.reason, (v?: any) => setR({ reason: v })),
       rfNote: r.note, setRfNote: (e?: any) => setR({ note: e.target.value }),
-      rfTypes: [['full', 'Full refund'], ['partial', 'Partial refund']].map(([v, l]: any) => ({ label: l, bg: r.type === v ? '#121214' : 'transparent', fg: r.type === v ? '#F4F2ED' : '#6B6A70', tap: () => setR({ type: v }) })),
+      rfTypes: [['full', 'Full refund'], ['partial', 'Partial refund']].map(([v, l]: any) => ({ label: l, bg: r.type === v ? '#1F2A44' : 'transparent', fg: r.type === v ? '#F8FAFC' : '#5B6B82', tap: () => setR({ type: v }) })),
       rfPartial: r.type === 'partial', rfFull: r.type === 'full', rfAmt: r.amount, setRfAmt: (e?: any) => setR({ amount: e.target.value.replace(/[^\d.]/g, '') }),
-      rfDest: RF_DEST(method).map(([v, name, sub, icon]: any) => { const on = r.dest === v; return { name, sub, icon, border: on ? '#121214' : '#E4E2DB', shadow: on ? '0 6px 18px rgba(18,18,20,.10)' : 'none', radio: on ? '7px solid #121214' : '1.5px solid #C8C6BF', tap: () => setR({ dest: v }) }; }),
+      rfDest: RF_DEST(method).map(([v, name, sub, icon]: any) => { const on = r.dest === v; return { name, sub, icon, border: on ? '#1F2A44' : '#E2E8F0', shadow: on ? '0 6px 18px rgba(15,23,42,.10)' : 'none', radio: on ? '7px solid #1F2A44' : '1.5px solid #CBD5E1', tap: () => setR({ dest: v }) }; }),
       rfHasFields: (RF_FIELDS[r.dest] || []).length > 0, rfFieldsTitle: ({ bank: 'BANK ACCOUNT DETAILS', upi: 'UPI DETAILS', btc: 'BITCOIN WALLET' } as AnyObj)[r.dest] || '',
       rfFieldsNote: ({ bank: 'The account must be in your name or your business’s name. We verify it before sending the refund.', upi: 'We send a ₹1 test credit to confirm the UPI ID before the refund.', btc: 'The USD amount is fixed. We convert at the rate on the day of payout and send to this address on the Bitcoin network.' } as AnyObj)[r.dest] || '',
-      rfAcct: (RF_FIELDS[r.dest] || []).map(([k, l, ph, mode]: any) => { const er = (s.rfFieldErr || ({} as AnyObj))[k] || ''; return { l, ph, mode: mode || 'text', v: r[k] || '', err: er, border: er ? '#B42318' : '#E4E2DB', ff: /account|code|upi|addr/.test(k) ? "'Geist Mono', monospace" : 'inherit', set: (e?: any) => { this.setState((x?: any) => ({ rf: Object.assign({}, x.rf, { [k]: e.target.value }), rfErr: '', rfFieldErr: Object.assign({}, x.rfFieldErr, { [k]: '' }) })); } }; }),
+      rfAcct: (RF_FIELDS[r.dest] || []).map(([k, l, ph, mode]: any) => { const er = (s.rfFieldErr || ({} as AnyObj))[k] || ''; return { l, ph, mode: mode || 'text', v: r[k] || '', err: er, border: er ? '#B42318' : '#E2E8F0', ff: /account|code|upi|addr/.test(k) ? "'Inter', system-ui, sans-serif" : 'inherit', set: (e?: any) => { this.setState((x?: any) => ({ rf: Object.assign({}, x.rf, { [k]: e.target.value }), rfErr: '', rfFieldErr: Object.assign({}, x.rfFieldErr, { [k]: '' }) })); } }; }),
       rfFiles: String(r.files), addRfPhoto: () => { this.remote.pickFiles('refund', 'refund_evidence', { limit: 5, max: 5 }); },
-      rfAgreeBg: r.agree ? '#121214' : '#fff', toggleRfAgree: () => setR({ agree: !r.agree }), rfErr: s.rfErr,
+      rfAgreeBg: r.agree ? '#1F2A44' : '#fff', toggleRfAgree: () => setR({ agree: !r.agree }), rfErr: s.rfErr,
       refundList: list.map((x?: any) => { const t = tone(x.refund.status); return { ref: x.refund.ref, oid: x.id, title: M.titleOf(x), amount: M.money(x.refund.amount), reason: x.refund.reason, at: M.fmt(x.refund.at), status: t[2], pillBg: t[0], pillFg: t[1], tap: () => this.go('order', { oid: x.id }) }; }),
       noRefunds: !list.length
     };
@@ -1162,12 +1431,12 @@ export class PlatformController {
   aucOrderCard(a?: any): any {
     const s = this.state, M = X(), p = (a.pid && M.product(a.pid)) || ({} as AnyObj), o = a.orderId && s.orders.find((x?: any) => x.id === a.orderId);
     const lead = a.leading !== undefined ? !!a.leading : !!(a.bids.length && a.bids[a.bids.length - 1].who === 'You');
-    const base = { id: a.id, title: a.name || p.name || a.id, qtyLine: a.qty ? a.qty + ' ' + (a.unit || p.unit || '') : '', img: IMG(a.imageUrl || p.img || 'cat-precious'), tap: () => this.openAuction(a.id) };
+    const base = { id: a.id, title: a.name || p.name || a.id, qtyLine: a.qty ? a.qty + ' ' + (a.unit || p.unit || '') : '', img: a.imageUrl ? IMG(a.imageUrl) : PIMG(p), tap: () => this.openAuction(a.id) };
     if (o) { const v = this.view(o); return Object.assign(base, { id: a.id + ' · ' + o.id, status: v.status, pillBg: v.pillBg, pillFg: v.pillFg, value: M.money(this.aucCur(a)), pct: v.pct, next: v.next, tap: () => this.go('order', { oid: o.id }) }); }
     if (a.result === 'won') return Object.assign(base, { status: 'Won · pay now', pillBg: '#E2F2E9', pillFg: '#17704C', value: 'Winning bid ' + M.money(this.aucCur(a)), pct: '20%', next: 'Pay the winning bid to release the lot for dispatch.', tap: () => this.go('auctionWon', { aid: a.id }) });
     if (a.status === 'live') return Object.assign(base, { status: lead ? 'Leading' : 'Outbid', pillBg: lead ? '#E2F2E9' : '#FDECEA', pillFg: lead ? '#17704C' : '#B42318', value: 'Current ' + M.money(this.aucCur(a)), pct: '10%', next: (lead ? 'You are the highest bidder' : 'Another bidder is ahead. Bid again') + ' · ends in ' + this.left(a.endsAt - Date.now()) });
-    if (a.status === 'upcoming') return Object.assign(base, { status: 'Reminder on', pillBg: '#FBF3E4', pillFg: '#A1620B', value: 'Starts at ' + M.money(a.start), pct: '0%', next: 'Bidding opens ' + (a.startsAt ? M.fmt(a.startsAt) : 'soon') });
-    return Object.assign(base, { status: 'Not won', pillBg: '#F1EFE9', pillFg: '#3A3940', value: 'Sold for ' + M.money(this.aucCur(a)), pct: '100%', next: 'Another bidder won this lot.' });
+    if (a.status === 'upcoming') return Object.assign(base, { status: 'Reminder on', pillBg: '#FEF7E0', pillFg: '#8A5A06', value: 'Starts at ' + M.money(a.start), pct: '0%', next: 'Bidding opens ' + (a.startsAt ? M.fmt(a.startsAt) : 'soon') });
+    return Object.assign(base, { status: 'Not won', pillBg: '#F1F5F9', pillFg: '#334155', value: 'Sold for ' + M.money(this.aucCur(a)), pct: '100%', next: 'Another bidder won this lot.' });
   }
   openDoc(spec?: any): any { this.go('doc', { doc: spec }); }
   /** Maps a rendered API document (GET /documents/:number) into the screen shape. */
@@ -1192,7 +1461,7 @@ export class PlatformController {
     const s = this.state, M = X(), u = s.user || EMPTY_USER, sp = spec || ({} as AnyObj);
     if (sp.num && s.docs[sp.num]) return s.docs[sp.num];
     const o = sp.oid && s.orders.find((x?: any) => x.id === sp.oid), p = sp.pid ? M.product(sp.pid) : null;
-    const R = (k?: any, v?: any, strong?: any) => ({ k, v: String(v == null || v === '' ? '—' : v), w: strong ? 700 : 500, mono: !!strong, ff: strong ? "'Geist Mono', monospace" : 'inherit' });
+    const R = (k?: any, v?: any, strong?: any) => ({ k, v: String(v == null || v === '' ? '—' : v), w: strong ? 700 : 500, mono: !!strong, ff: strong ? "'Inter', system-ui, sans-serif" : 'inherit' });
     const items = o && o.kind === 'buy' ? o.items.map((it?: any) => [M.product(it.pid) || ({} as AnyObj), it]) : [];
     const pp = o && o.kind === 'sell' ? [['SELLER', u.name + ' · ' + u.business], ['BUYER', 'Mineral Bridge Ltd']] : [['BUYER', u.name + ' · ' + u.business], ['SELLER', 'Mineral Bridge Ltd']];
     const lines = o ? (o.kind === 'sell' && o.sell ? [R(o.sell.name, o.sell.qty + ' ' + o.sell.unit + (o.sell.grade ? ' · ' + o.sell.grade : ''))] : items.map(([x, it]: any) => R(it.name || x.name || it.pid, (it.uIn && it.uIn !== M.unitOfItem(it) ? it.qIn + ' ' + it.uIn : it.qty + ' ' + M.unitOfItem(it)) + (x.lab ? ' · ' + x.grade : '')))) : [];
@@ -1214,7 +1483,7 @@ export class PlatformController {
   docHtml(d?: any): any {
     const e = (v?: any) => String(v == null ? '' : v).replace(/[&<>]/g, (c?: any) => (({ '&': '&amp;', '<': '&lt;', '>': '&gt;' } as AnyObj)[c]));
     const tbl = (rows?: any) => '<table>' + rows.map(([k, v]: any) => '<tr><td>' + e(k) + '</td><td>' + e(v) + '</td></tr>').join('') + '</table>';
-    return '<!doctype html><html><head><meta charset="utf-8"><title>' + e(d.title + ' ' + d.no) + '</title><style>body{font-family:Helvetica,Arial,sans-serif;color:#121214;max-width:720px;margin:40px auto;padding:0 24px}h1{font-family:Georgia,serif;font-weight:400;font-size:30px;margin:18px 0 4px}table{width:100%;border-collapse:collapse;margin:6px 0 18px}td{padding:7px 0;border-bottom:1px solid #e4e2db;font-size:13px}td:last-child{text-align:right;font-weight:600}h3{font-size:11px;letter-spacing:.08em;color:#8a6a1c;border-bottom:2px solid #121214;padding-bottom:5px;margin:22px 0 0}.top{display:flex;justify-content:space-between;background:#121214;color:#f4f2ed;padding:14px 18px;border-radius:6px}.m{color:#6b6a70;font-size:12px}@media print{.top{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>'
+    return '<!doctype html><html><head><meta charset="utf-8"><title>' + e(d.title + ' ' + d.no) + '</title><style>body{font-family:Helvetica,Arial,sans-serif;color:#1F2A44;max-width:720px;margin:40px auto;padding:0 24px}h1{font-family:Georgia,serif;font-weight:400;font-size:30px;margin:18px 0 4px}table{width:100%;border-collapse:collapse;margin:6px 0 18px}td{padding:7px 0;border-bottom:1px solid #E2E8F0;font-size:13px}td:last-child{text-align:right;font-weight:600}h3{font-size:11px;letter-spacing:.08em;color:#8A6508;border-bottom:2px solid #1F2A44;padding-bottom:5px;margin:22px 0 0}.top{display:flex;justify-content:space-between;background:#1F2A44;color:#F8FAFC;padding:14px 18px;border-radius:6px}.m{color:#5B6B82;font-size:12px}@media print{.top{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>'
       + '<div class="top"><b>Mineral Bridge</b><span>' + e(d.issuer) + ' · ' + e(d.no) + '</span></div><h1>' + e(d.title) + '</h1><div class="m">Issued ' + e(d.date) + (d.status ? ' · ' + e(d.status) : '') + '</div>'
       + tbl(d.parties || []) + (d.sections || []).map((x?: any) => '<h3>' + e(x.h) + '</h3>' + tbl(x.rows.map((r?: any) => [r.k, r.v]))).join('')
       + (d.note ? '<p class="m">' + e(d.note) + '</p>' : '') + '<p style="margin-top:40px"><i>' + e(d.signer) + '</i><br><span class="m">' + e(d.signerRole) + '</span></p></body></html>';
@@ -1231,7 +1500,7 @@ export class PlatformController {
   docVals(): any {
     const s = this.state; if (s.screen !== 'doc' && s.screen !== 'auctionWon') return { dc: { parties: [], sections: [] }, openAucDoc: () => {} };
     const d = this.docData(s.doc), ok = ({ SIGNED: 1, PAID: 1, CONFIRMED: 1, COMPLETED: 1, COMPLIANT: 1, CERTIFIED: 1, VALID: 1, RELEASED: 1, DELIVERED: 1, REFUNDED: 1, WON: 1, DECLARED: 1 } as AnyObj)[d.status];
-    return { dc: Object.assign({}, d, { hasParties: !!(d.parties || []).length, parties: (d.parties || []).map(([k, v]: any) => ({ k, v })), stBg: ok ? '#E2F2E9' : '#FBF3E4', stFg: ok ? '#17704C' : '#A1620B', file: this.docFile(d) }),
+    return { dc: Object.assign({}, d, { hasParties: !!(d.parties || []).length, parties: (d.parties || []).map(([k, v]: any) => ({ k, v })), stBg: ok ? '#E2F2E9' : '#FEF7E0', stFg: ok ? '#17704C' : '#8A5A06', file: this.docFile(d) }),
       openAucDoc: () => { const a = this.aucOf(), o = a && a.orderId ? s.orders.find((x?: any) => x.id === a.orderId) : null, d = o && (o.docs || []).find((x?: any) => /auction/i.test(x.type)); if (d) this.openDoc({ t: 'api', num: d.number, oid: o.id }); else this.flash('The auction result certificate is issued with your order'); } };
   }
   bizDocNeeded(): any { return this.isBusiness(this.state.user || ({} as AnyObj)); }
@@ -1242,22 +1511,22 @@ export class PlatformController {
     const base = u.kyc === 'verified' ? 'Verified' : u.kyc === 'pending' ? 'Received' : '';
     return ids.map((id?: any) => { const f = k[id], fl = this.kycFlag(id), done = (u.kycFlags || ({} as AnyObj))[id] && !fl;
       const n = id === 'front' || id === 'back' ? kycDocLabel(id, k.idType) : KYC_INFO[id].title;
-      return { n, v: fl ? 'Re-upload requested' : done ? 'Replaced · ready to resubmit' : f ? (base || 'Uploaded') + ' · ' + f.name : base || 'Not uploaded', fg: fl ? '#B42318' : done ? '#17704C' : base === 'Verified' ? '#17704C' : (f || base) ? '#121214' : '#8B8A90', flag: fl,
-        canEdit: editable || !!fl, btn: fl ? 'Re-upload' : f ? 'Replace' : 'Upload', btnBg: fl ? '#121214' : '#fff', btnFg: fl ? '#F4F2ED' : '#121214', btnBorder: fl ? '#121214' : '#E4E2DB',
+      return { n, v: fl ? 'Re-upload requested' : done ? 'Replaced · ready to resubmit' : f ? (base || 'Uploaded') + ' · ' + f.name : base || 'Not uploaded', fg: fl ? '#B42318' : done ? '#17704C' : base === 'Verified' ? '#17704C' : (f || base) ? '#1F2A44' : '#5B6B82', flag: fl,
+        canEdit: editable || !!fl, btn: fl ? 'Re-upload' : f ? 'Replace' : 'Upload', btnBg: fl ? '#1F2A44' : '#fff', btnFg: fl ? '#F8FAFC' : '#1F2A44', btnBorder: fl ? '#1F2A44' : '#E2E8F0',
         tap: () => this.go('kycDoc', { kycDocId: id, kycDocErr: '' }) }; });
   }
   authVals(): any {
     const s = this.state, M = X(), a = s.auth.method === 'email' || s.auth.method === 'whatsapp' ? s.auth : Object.assign({}, s.auth, { method: 'whatsapp' }), set = (p?: any) => this.setState((x?: any) => ({ auth: Object.assign({}, x.auth, p), authErr: '' }));
-    const sel = (on?: any) => ({ border: on ? '#121214' : '#E4E2DB', radio: on ? '7px solid #121214' : '1.5px solid #C8C6BF', shadow: on ? '0 6px 18px rgba(18,18,20,.10)' : 'none' });
+    const sel = (on?: any) => ({ border: on ? '#1F2A44' : '#E2E8F0', radio: on ? '7px solid #1F2A44' : '1.5px solid #CBD5E1', shadow: on ? '0 6px 18px rgba(15,23,42,.10)' : 'none' });
     const r = s.reg, setR = (p?: any) => this.setState((x?: any) => ({ reg: Object.assign({}, x.reg, p), regErr: '' }));
     const k = s.kyc, setK = (p?: any) => this.setState((x?: any) => ({ kyc: Object.assign({}, x.kyc, p), kycErr: '' }));
-    const boxes = Array.from({ length: 4 }, (_?: any, i?: any) => ({ v: s.otp[i] || '', border: s.otp.length === i ? '#121214' : '#E4E2DB' }));
+    const boxes = Array.from({ length: 4 }, (_?: any, i?: any) => ({ v: s.otp[i] || '', border: s.otp.length === i ? '#1F2A44' : '#E2E8F0' }));
     const idDocs = kycDocRows(s.kycReq, k.idType, this.bizDocNeeded());
     return {
       startSignup: () => { set({ mode: 'signup' }); this.go('auth'); }, startSignin: () => { set({ mode: 'signin' }); this.go('auth'); },
       browseGuest: () => this.jump('cats'),
-      authModes: [['signup', 'Sign up'], ['signin', 'Sign in']].map(([id, label]: any) => ({ label, bg: a.mode === id ? '#121214' : 'transparent', fg: a.mode === id ? '#F4F2ED' : '#6B6A70', tap: () => set({ mode: id }) })),
-      authMethods: [['whatsapp', 'WhatsApp', 'M3 21l1.6-5A9 9 0 1 1 8 19.4zM9 10c0 2.5 2.5 5 5 5l1.2-1.2 2 1-1 2c-4 0-8-4-8-8l2-1 1 2z'], ['email', 'Email', 'M4 4h16v16H4zM22 6l-10 7L2 6']].map(([id, label, icon]: any) => ({ label, icon, on: a.method === id, cardBg: a.method === id ? '#121214' : '#fff', border: a.method === id ? '#121214' : '#E4E2DB', iconBg: a.method === id ? 'rgba(217,180,86,.18)' : '#F1EFE9', iconFg: a.method === id ? '#D9B456' : '#121214', fg: a.method === id ? '#F4F2ED' : '#121214', sh: a.method === id ? '0 10px 22px rgba(18,18,20,.22)' : 'none', tap: () => set({ method: id, value: '' }) })),
+      authModes: [['signup', 'Sign up'], ['signin', 'Sign in']].map(([id, label]: any) => ({ label, bg: a.mode === id ? '#1F2A44' : 'transparent', fg: a.mode === id ? '#F8FAFC' : '#5B6B82', tap: () => set({ mode: id }) })),
+      authMethods: [['whatsapp', 'WhatsApp', 'M3 21l1.6-5A9 9 0 1 1 8 19.4zM9 10c0 2.5 2.5 5 5 5l1.2-1.2 2 1-1 2c-4 0-8-4-8-8l2-1 1 2z'], ['email', 'Email', 'M4 4h16v16H4zM22 6l-10 7L2 6']].map(([id, label, icon]: any) => ({ label, icon, on: a.method === id, cardBg: a.method === id ? '#1F2A44' : '#fff', border: a.method === id ? '#1F2A44' : '#E2E8F0', iconBg: a.method === id ? 'rgba(242,201,76,.18)' : '#F1F5F9', iconFg: a.method === id ? '#F2C94C' : '#1F2A44', fg: a.method === id ? '#F8FAFC' : '#1F2A44', sh: a.method === id ? '0 10px 22px rgba(15,23,42,.22)' : 'none', tap: () => set({ method: id, value: '' }) })),
       modeX: a.mode === 'signin' ? 'translateX(100%)' : 'translateX(0)',
       authKicker: a.mode === 'signin' ? 'WELCOME BACK' : 'VERIFIED MINERAL TRADING',
       authTitle: a.mode === 'signin' ? 'Sign in to Mineral Bridge' : 'Create your Mineral Bridge account',
@@ -1272,7 +1541,7 @@ export class PlatformController {
       ccList: CC.map(([c, n]: any) => ({ v: c, l: n + ' ' + c })),
       authLabel: a.method === 'email' ? 'EMAIL ADDRESS' : 'WHATSAPP NUMBER',
       authPh: a.method === 'email' ? 'you@company.com' : '803 000 0000', authType: a.method === 'email' ? 'email' : 'tel',
-      keepOn: a.keep, keepBg: a.keep ? '#121214' : '#D5D3CC', keepX: a.keep ? '20px' : '2px', toggleKeep: () => set({ keep: !a.keep }),
+      keepOn: a.keep, keepBg: a.keep ? '#1F2A44' : '#CBD5E1', keepX: a.keep ? '20px' : '2px', toggleKeep: () => set({ keep: !a.keep }),
       otpVia: a.method === 'email' ? 'email' : 'WhatsApp',
       otpTo:
         a.method === 'email'
@@ -1286,20 +1555,20 @@ export class PlatformController {
       sellerOpts: M.SELLER_TYPES.map(([id, name, sub]: any) => Object.assign({ name, sub, tap: () => setR({ sellerType: id }) }, sel(r.sellerType === id))),
       regHeading: this.isBusiness(r) ? 'Your business details' : 'Your details', regBizLabel: this.isBusiness(r) ? 'BUSINESS OR TRADING NAME' : 'TRADING NAME (OPTIONAL)', regBizPh: this.isBusiness(r) ? 'Kestrel Metals Ltd' : 'Leave blank if you trade as an individual',
       regErr: s.regErr, regBusiness: r.business, setRegBusiness: (e?: any) => setR({ business: e.target.value }), regCountry: r.country, setRegCountry: (e?: any) => setR({ country: e.target.value }),
-      regTermsBg: r.terms ? '#121214' : '#fff', regTerms: r.terms, toggleTerms: () => setR({ terms: !r.terms }),
+      regTermsBg: r.terms ? '#1F2A44' : '#fff', regTerms: r.terms, toggleTerms: () => setR({ terms: !r.terms }),
       regContact: (a.method === 'email' ? 'Email · ' + (a.value || '—') : 'WhatsApp · ' + (a.cc || '+234') + ' ' + a.value.trim().replace(/^0+/, '')) + ' · verified',
-      idTypes: ['National ID', 'Passport', "Driver's licence"].map((t?: any) => ({ label: t, bg: k.idType === t ? '#121214' : '#fff', fg: k.idType === t ? '#F4F2ED' : '#121214', tap: () => { void this.task(this.remote.setKycIdType(t)); } })),
-      kycDocs: idDocs.map(([id, label]: any) => { const f = k[id], fl = this.kycFlag(id); return { label, icon: KYC_INFO[id].icon, done: !!f, doneOk: !!f && !fl, flagged: !!fl, todo: !f, hasImg: !!f && f.kind === 'img', isPdf: !!f && f.kind === 'pdf', isSample: !!f && f.kind === 'sample', bg: f && f.src ? "url('" + f.src + "')" : 'none', sub: fl ? 'Re-upload requested · ' + fl : f ? 'Uploaded · ' + f.name : KYC_INFO[id].short, subFg: fl ? '#B42318' : f ? '#17704C' : '#6B6A70', border: fl ? '#F2CFCB' : f ? '#B7DFC8' : '#E4E2DB', tap: () => this.go('kycDoc', { kycDocId: id, kycDocErr: '' }) }; }),
+      idTypes: ['National ID', 'Passport', "Driver's licence"].map((t?: any) => ({ label: t, bg: k.idType === t ? '#1F2A44' : '#fff', fg: k.idType === t ? '#F8FAFC' : '#1F2A44', tap: () => { void this.task(this.remote.setKycIdType(t)); } })),
+      kycDocs: idDocs.map(([id, label]: any) => { const f = k[id], fl = this.kycFlag(id); return { label, icon: KYC_INFO[id].icon, done: !!f, doneOk: !!f && !fl, flagged: !!fl, todo: !f, hasImg: !!f && f.kind === 'img', isPdf: !!f && f.kind === 'pdf', isSample: !!f && f.kind === 'sample', bg: f && f.src ? "url('" + f.src + "')" : 'none', sub: fl ? 'Re-upload requested · ' + fl : f ? 'Uploaded · ' + f.name : KYC_INFO[id].short, subFg: fl ? '#B42318' : f ? '#17704C' : '#5B6B82', border: fl ? '#F2CFCB' : f ? '#B7DFC8' : '#E2E8F0', tap: () => this.go('kycDoc', { kycDocId: id, kycDocErr: '' }) }; }),
       kycCount: idDocs.filter(([id]: any) => k[id]).length + ' of ' + idDocs.length + ' uploaded', kycPct: Math.round(100 * idDocs.filter(([id]: any) => k[id]).length / idDocs.length) + '%',
       kd: (() => { const id = s.kycDocId || 'front', info = KYC_INFO[id], f = k[id], lab = (idDocs.find((d?: any) => d[0] === id) || [id, info.title])[1], pos = idDocs.findIndex((d?: any) => d[0] === id);
         return { label: lab, step: 'DOCUMENT ' + (pos + 1) + ' OF ' + idDocs.length, desc: info.desc, ratio: info.ratio, frameR: id === 'selfie' ? '50%' : '14px', frameHint: info.hint, capture: id === 'selfie' ? 'user' : 'environment', accept: id === 'selfie' ? 'image/*' : 'image/*,application/pdf',
           empty: !f, has: !!f, hasImg: !!f && f.kind === 'img', isPdf: !!f && f.kind === 'pdf', isSample: !!f && f.kind === 'sample', bg: f && f.src ? "url('" + f.src + "')" : 'none', name: f ? f.name : '', meta: f ? f.size + ' · added ' + M.fmt(f.at) : '',
           sampleHead: id === 'address' ? 'UTILITY BILL · OCT 2026' : id === 'biz' ? 'CERTIFICATE OF INCORPORATION' : id === 'selfie' ? 'SELFIE WITH ID' : (k.idType || 'NATIONAL ID').toUpperCase(), samplePhoto: id === 'front' || id === 'selfie', sampleMrz: id === 'front' ? 'IDNGA<<OKAFOR<<ADAEZE<<<<<<<<<<<' : id === 'back' ? '<<<<<<<<<<<<<<<<<<<<A0482216<<<' : '',
-          err: s.kycDocErr, flag: this.kycFlag(id), tips: info.tips.map((t?: any, i?: any, a?: any) => ({ t, line: i === a.length - 1 ? 'transparent' : '#EFEDE7' })) }; })(),
+          err: s.kycDocErr, flag: this.kycFlag(id), tips: info.tips.map((t?: any, i?: any, a?: any) => ({ t, line: i === a.length - 1 ? 'transparent' : '#F1F5F9' })) }; })(),
       onKycFile: (e?: any) => { const file = e.target.files && e.target.files[0]; e.target.value = ''; if (file) this.readKycFile(file); },
       useKycSample: () => { if (!DEV_TOOLS) return; const id = s.kycDocId; setK({ [id]: { kind: 'sample', src: '', name: 'sample-' + id + '.jpg', size: '1.2 MB', at: Date.now() } }); this.setState({ kycDocErr: '' }); },
       removeKycDoc: () => { const old = k[s.kycDocId]; if (old && old.src && old.src.startsWith('blob:')) URL.revokeObjectURL(old.src); void this.task(this.remote.removeKycDoc(s.kycDocId)); },
-      kycConsent: k.consent, kycConsentBg: k.consent ? '#121214' : '#fff', toggleConsent: () => { void this.task(this.remote.setKycConsent(!k.consent)); }, kycErr: s.kycErr,
+      kycConsent: k.consent, kycConsentBg: k.consent ? '#1F2A44' : '#fff', toggleConsent: () => { void this.task(this.remote.setKycConsent(!k.consent)); }, kycErr: s.kycErr,
       kycRef: (s.user || ({} as AnyObj)).kycRef || '', kycReturnNote: s.returnTo ? 'When approved, you can continue where you left off.' : 'We will notify you by email, SMS and WhatsApp when it is approved.',
       simApproveKyc: () => { if (!DEV_TOOLS) return; this.setState((x?: any) => ({ user: Object.assign({}, x.user, { kyc: 'verified' }) })); this.flash('Demo: KYC approved'); },
       simRejectKyc: () => { if (!DEV_TOOLS) return; const now = Date.now(); this.setState((x?: any) => ({ user: Object.assign({}, x.user, { kyc: 'rejected', kycReason: 'Compliance asked you to re-upload 2 documents. Replace them and resubmit.', kycFlags: { address: ['Proof of address is older than 3 months. Upload one dated within the last 3 months.', now], selfie: ['Your face is partly hidden. Take a new selfie in good light holding your ID.', now] } }), kyc: Object.assign({}, x.kyc, { consent: false }) })); this.notify(null, 'KYC: documents need re-upload', 'Replace your proof of address and selfie, then resubmit.'); this.flash('Demo: compliance asked for re-upload'); }

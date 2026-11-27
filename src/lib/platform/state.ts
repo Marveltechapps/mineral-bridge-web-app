@@ -200,6 +200,10 @@ export interface AppState {
   cxErr?: string;
   /** Increments whenever a screen asks to scroll back to the top. */
   scrollSeq: number;
+  /** Product photo shown in the product-detail gallery (v6 design). */
+  pdpI: number;
+  /** Brand loader shown briefly each time Home opens (v6 design). */
+  homeLoad: boolean;
   /** Contact (phone/email) change flow. */
   contact: ContactChange | null;
   contactCode: string;
@@ -247,7 +251,7 @@ export function fresh(): AppState {
     edit: null, editErr: {},
     rf: emptyRefund(), rfFieldErr: {}, rfErr: '', qu: null, auctions: [], auctionsLoading: false, atab: 'live', aid: '', bidAmt: '', bidErr: '', autoOn: false, autoMax: '', reminders: {}, tick: 0,
     docs: {}, docLoading: false,
-    scrollSeq: 0,
+    scrollSeq: 0, pdpI: 0, homeLoad: false,
     contact: null, contactCode: '', contactErr: '', contactBusy: false, varNote: '', varErr: '', varBusy: false,
     supThreads: null, supLoading: false, supErr: '', supRef: '', supThread: null, supThreadLoading: false, supMsg: '', supBusy: false,
   };

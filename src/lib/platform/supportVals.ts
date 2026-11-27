@@ -5,10 +5,10 @@ export const topicLabel = (t: string): string => TOPIC[t] || String(t || 'genera
 /** [label, background, text colour] */
 export type Tone = [string, string, string];
 const STATUS: Record<string, Tone> = {
-  open: ['Open', '#FBF3E4', '#A1620B'],
+  open: ['Open', '#FEF7E0', '#8A5A06'],
   agent_replied: ['Replied', '#E8EEF9', '#2B4C8C'],
-  waiting_on_user: ['Waiting for you', '#FBF3E4', '#A1620B'],
+  waiting_on_user: ['Waiting for you', '#FEF7E0', '#8A5A06'],
   resolved: ['Resolved', '#E2F2E9', '#17704C'],
-  closed: ['Closed', '#F1EFE9', '#3A3940'],
+  closed: ['Closed', '#F1F5F9', '#334155'],
 };
-export const statusTone = (st: string): Tone => STATUS[st] || [String(st || '').replace(/_/g, ' ').replace(/^./, m => m.toUpperCase()), '#F1EFE9', '#3A3940'];
+export const statusTone = (st: string): Tone => STATUS[st] || [String(st || '').replace(/_/g, ' ').replace(/^./, m => m.toUpperCase()), '#F1F5F9', '#334155'];

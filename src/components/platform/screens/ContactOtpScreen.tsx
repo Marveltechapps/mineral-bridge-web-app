@@ -8,7 +8,7 @@ export function ContactOtpScreen({ vm }: { vm: ViewModel }) {
   if (!ct?.active) {
     return (
       <div style={{ padding: '0', animation: 'fadeUp .45s cubic-bezier(.2,.8,.2,1) both' }}>
-        <div style={{ padding: '12px 14px', borderRadius: '14px', background: '#F1EFE9', fontSize: '12.5px', color: '#3A3940', lineHeight: '1.5' }}>
+        <div style={{ padding: '12px 14px', borderRadius: '14px', background: '#F1F5F9', fontSize: '12.5px', color: '#334155', lineHeight: '1.5' }}>
           This change expired. Go back and tap Change again.
         </div>
       </div>
@@ -16,19 +16,19 @@ export function ContactOtpScreen({ vm }: { vm: ViewModel }) {
   }
   return (
     <div style={{ padding: '0', animation: 'fadeUp .45s cubic-bezier(.2,.8,.2,1) both' }}>
-      <div style={{ fontFamily: "'Instrument Serif', serif", fontSize: '32px', lineHeight: '1.05', letterSpacing: '-.3px' }}>
+      <div style={{ fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '800', letterSpacing: '-.3px', fontSize: '26.2px', lineHeight: '1.05' }}>
         Enter the 4-digit code
       </div>
-      <div style={{ fontSize: '14px', color: '#6B6A70', marginTop: '10px', lineHeight: '1.5' }}>
+      <div style={{ fontSize: '14px', color: '#5B6B82', marginTop: '10px', lineHeight: '1.5' }}>
         {"Sent by "}{ct.via}{" to your new "}{ct.noun}{" "}
-        <b style={{ color: '#121214' }}>
+        <b style={{ color: '#1F2A44' }}>
           {ct.to}
         </b>
       </div>
       <div style={{ position: 'relative', marginTop: '24px' }}>
         <div style={{ display: 'flex', gap: '8px' }}>
           {list(ct.boxes).map((b, index) => (
-            <div key={index} style={{ flex: '1', height: '60px', borderRadius: '14px', background: '#fff', border: `1.5px solid ${b?.border ?? ''}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Geist Mono', monospace", fontSize: '24px', fontWeight: '600' }}>
+            <div key={index} style={{ flex: '1', height: '60px', borderRadius: '14px', background: '#fff', border: `1.5px solid ${b?.border ?? ''}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: "'Inter',system-ui,sans-serif", fontWeight: '600', fontVariantNumeric: 'tabular-nums', fontSize: '24px' }}>
               <Val v={b?.v} />
             </div>
           ))}
@@ -41,18 +41,18 @@ export function ContactOtpScreen({ vm }: { vm: ViewModel }) {
         </div>
       ) : null}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: '18px', fontSize: '13.5px' }}>
-        <span style={{ color: '#6B6A70' }}>
+        <span style={{ color: '#5B6B82' }}>
           Didn’t get it?
         </span>
         <span onClick={ct.resend} role="button" aria-disabled={ct.resendOff} style={{ cursor: ct.resendOff ? 'default' : 'pointer', fontWeight: '600', color: str(ct.resendFg) }}>
           {ct.resendLabel}
         </span>
       </div>
-      <div style={{ marginTop: '20px', padding: '12px 14px', borderRadius: '14px', background: '#F1EFE9', fontSize: '12.5px', color: '#3A3940', lineHeight: '1.5' }}>
+      <div style={{ marginTop: '20px', padding: '12px 14px', borderRadius: '14px', background: '#F1F5F9', fontSize: '12.5px', color: '#334155', lineHeight: '1.5' }}>
         {"Your current "}{ct.noun}{" stays active until you verify the new one."}
       </div>
       {ct.devOtp ? (
-        <div style={{ marginTop: '12px', padding: '12px 14px', borderRadius: '14px', background: '#F1EFE9', fontSize: '12.5px', color: '#3A3940', lineHeight: '1.5' }}>
+        <div style={{ marginTop: '12px', padding: '12px 14px', borderRadius: '14px', background: '#F1F5F9', fontSize: '12.5px', color: '#334155', lineHeight: '1.5' }}>
           {"Development build: the server returned the code "}{ct.devOtp}{". Production builds never show this."}
         </div>
       ) : null}
